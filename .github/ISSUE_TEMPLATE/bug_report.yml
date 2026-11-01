@@ -1,0 +1,75 @@
+name: 问题报告 / Bug report
+description: 安装、运行或整理出错时使用
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **提交前请先打码**：不要贴主页链接、笔记编号和标题、`xsec_token`、Cookie、API Key；把 `/Users/<你的用户名>` 换成 `~`。
+        安全问题请不要在这里提交，请按 [SECURITY.md](../blob/main/SECURITY.md) 私下报告。
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 你做了什么、期望看到什么、实际看到了什么。控制台上显示的错误代码或提示请原样贴出。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. …
+        2. …
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: xhs-wiki 版本
+      placeholder: 例如 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS 版本与芯片
+      placeholder: 例如 macOS 15.3，Apple 芯片（M2）
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: 安装方式
+      options:
+        - 一键安装（curl … | bash）
+        - 本地安装（bash install.sh --from-local .）
+        - 其他
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: 整理模型提供方
+      options:
+        - Claude Code
+        - Codex
+        - Anthropic API
+        - OpenAI 兼容接口
+        - 还没走到这一步
+    validations:
+      required: true
+  - type: dropdown
+    id: asr
+    attributes:
+      label: 语音模型
+      options:
+        - Whisper（默认）
+        - SenseVoice（快速）
+        - 不确定
+  - type: textarea
+    id: doctor
+    attributes:
+      label: xhs-wiki doctor 的输出（已打码）
+      description: 在终端运行 `xhs-wiki doctor`，把结果贴在这里。记得把个人路径换成 `~`。
+      render: text

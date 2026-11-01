@@ -1,0 +1,21 @@
+name: 功能建议 / Feature request
+description: 想要新功能或改进时使用
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        xhs-wiki 只整理**你自己的**收藏，不会加入抓取他人内容、批量下载或绕过平台限制的功能。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你遇到了什么问题
+      description: 用一两句话描述场景和痛点，比提出具体方案更有帮助。
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你希望怎么解决
+    validations:
+      required: false

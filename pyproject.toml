@@ -1,0 +1,57 @@
+[project]
+name = "xhs-wiki"
+version = "0.1.0"
+description = "把你自己的小红书收藏整理成 Mac 本机、AI 能查的个人知识库 / Turn your own Xiaohongshu (RedNote) favorites into a local, AI-searchable knowledge base on macOS"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE", "LICENSES/*"]
+authors = [{ name = "tyr1105" }]
+keywords = ["xiaohongshu", "rednote", "knowledge-base", "second-brain", "claude-code", "obsidian", "markdown", "whisper", "macos"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: MacOS X",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Text Processing :: Markup :: Markdown",
+]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "playwright==1.63.0",
+    "pyobjc-framework-Vision==12.2.2",
+    "sherpa-onnx==1.13.8",
+    "anthropic==1.15.0",
+    "openai==3.31.0",
+    # 语音解析直接导入 numpy，显式锁定开发环境已验证的版本。
+    "numpy==2.5.4",
+    # 默认语音模型 Whisper 的推理库。默认就用 Whisper 转写，所以必须是主依赖。
+    "faster-whisper==1.2.1",
+    # PyAV：自带 FFmpeg 解码库的 Python 包，用来从视频里提取音频、检查视频能否读取，
+    # 所以用户不需要另装 ffmpeg。只给版本范围、不锁死：安装脚本用 --only-binary 让
+    # 安装器按 macOS 版本选预编译包（macOS 13 的 Apple 芯片会选到 15.x，其他选新版）。
+    "av>=15.1,<20",
+    # onnxruntime 是 faster-whisper 的依赖。1.24 起不再提供 Intel Mac 的预编译包，Apple 芯片的包也要求 macOS 14，
+    # 所以限制在 1.24 以下（1.23.2 同时支持 Intel 和 macOS 13），并让所有机器用同一个版本系列。
+    "onnxruntime>=1.14,<1.24",
+]
+
+[project.urls]
+Homepage = "https://github.com/tyr1105/xhs-wiki"
+Repository = "https://github.com/tyr1105/xhs-wiki"
+Issues = "https://github.com/tyr1105/xhs-wiki/issues"
+Changelog = "https://github.com/tyr1105/xhs-wiki/blob/main/CHANGELOG.md"
+
+[project.scripts]
+xhs-wiki = "xhs_wiki.cli:main"
+
+[dependency-groups]
+dev = ["pytest==9.1.1"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/xhs_wiki"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

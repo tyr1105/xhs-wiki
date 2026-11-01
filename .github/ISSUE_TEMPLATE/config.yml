@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全问题 / Security vulnerability
+    url: https://github.com/tyr1105/xhs-wiki/security/advisories/new
+    about: 请私下报告安全问题，不要公开提交 issue。

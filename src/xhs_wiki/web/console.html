@@ -1,0 +1,1114 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- 服务启动时把 {{CSRF_TOKEN}} 换成本次启动的随机令牌；所有 POST 都要带它 -->
+<meta name="csrf-token" content="{{CSRF_TOKEN}}">
+<title>xhs-wiki · 控制台</title>
+<style>
+/* 蓝灰纸面风格的配色；不引入任何外部资源。 */
+:root{--bg:#f3f6f9;--paper:#fff;--ink:#152f46;--muted:#66798a;--line:#dde5ec;--blue:#236b9e;--blue-soft:#eaf3fb;--green:#237957;--amber:#996013;--rose:#df455f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+button,input,select{font:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:7px 16px;white-space:nowrap}/* 按钮文字不折行，长提示不会把按钮挤成两行 */
+button:hover:not(:disabled){border-color:var(--blue);color:var(--blue)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+button.primary:hover:not(:disabled){color:#fff}
+.wrap{max-width:1080px;margin:auto;padding:28px 36px 40px}
+.mast{display:flex;align-items:center;gap:12px}
+.mast h1{font-size:22px;margin:0;letter-spacing:-.5px}
+.mast p{margin:0;color:var(--muted);font-size:12px}
+.connection{margin-left:auto;text-align:right;color:var(--muted);font-size:12px}
+.connection b{font-weight:500;color:var(--green)}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:6px}
+.paper{background:var(--paper);border:1px solid var(--line);border-radius:12px;margin-top:20px;overflow:hidden}
+.status-row{display:flex;align-items:center;gap:14px;padding:18px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.status-row strong{font-size:15px}
+.pill{font-size:12px;font-weight:500;display:inline-flex;align-items:center;padding:4px 11px;border-radius:20px;color:var(--blue);background:var(--blue-soft);white-space:nowrap}
+.pill.warn{color:var(--amber);background:#fff4df}
+.pill.bad{color:var(--rose);background:#fde8ec}
+.pill.ok{color:var(--green);background:#e8f5ee}
+.subtle{font-size:12px;color:var(--muted)}
+.actions{display:flex;gap:10px;align-items:center;padding:16px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.hint{font-size:12px;color:var(--muted)}
+.hint.ok{color:var(--green)}
+.hint.err{color:var(--rose)}
+.body{padding:18px 22px}
+h2{font-size:15px;margin:0 0 12px}
+.list{display:flex;flex-direction:column;gap:8px}
+.needs{border:1px solid #f3d9a6;background:#fffaf0;border-radius:8px;padding:10px 14px}
+.needs .title{font-weight:600;color:var(--amber)}
+.needs .detail{font-size:12px;color:var(--muted)}
+.qr{display:flex;align-items:center;gap:16px;margin-top:10px}
+.qr img{width:160px;height:160px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.qr .placeholder{width:160px;height:160px;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);font-size:13px;line-height:1.6;padding:12px}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:0;padding:20px 0}
+.metric{padding:0 22px;border-right:1px solid var(--line)}
+.metric:last-child{border:0}
+.metric .label{font-size:13px;color:var(--muted)}
+.metric .value{font-size:30px;line-height:1.3;font-weight:600}
+form.settings{display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap}
+label.field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+input[type=time],input[type=number],input[type=text],input[type=password]{border:1px solid var(--line);border-radius:8px;padding:6px 10px;width:220px}
+.scroll{max-height:420px;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--muted);font:inherit;font-size:12px;background:#f7fafc;position:sticky;top:0}
+td.muted{color:var(--muted)}
+.tag{display:inline-block;padding:2px 9px;border-radius:12px;font-size:12px;background:var(--blue-soft);color:var(--blue)}
+.tag.done{background:#e8f5ee;color:var(--green)}
+.tag.warn{background:#fff4df;color:var(--amber)}
+.tag.bad{background:#fde8ec;color:var(--rose)}
+.space-row{display:flex;gap:26px;padding:16px 22px;color:var(--muted);flex-wrap:wrap}
+.space-row b{color:var(--ink);font-weight:600}
+footer{margin-top:22px;color:var(--muted);font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.hidden{display:none!important} /* !important：label.field 等带 display 的规则优先级更高，不加会导致"加了 hidden 仍显示"（实际出现过 base_url 框藏不住） */
+/* ---------------- 首次向导 ---------------- */
+.wizard{max-width:720px;margin:auto;padding:28px 20px 60px}
+.wizard .paper{padding:24px 26px}
+.wizard .steps{display:flex;gap:8px;margin:14px 0 20px;flex-wrap:wrap}
+.wizard .steps span{font-size:12px;color:var(--muted);padding:3px 10px;border-radius:12px;background:var(--bg)}
+.wizard .steps span.now{color:#fff;background:var(--blue)}
+.card{border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0;cursor:pointer}
+.card:hover{border-color:var(--blue)}
+.card.on{border-color:var(--blue);background:var(--blue-soft)}
+.card h3{margin:0 0 6px;font-size:14px}
+.card p{margin:0;color:var(--muted);font-size:12px}
+.card .badge{display:inline-block;margin-top:8px;font-size:12px;color:var(--amber);background:#fff4df;border-radius:12px;padding:2px 10px}
+.wnav{display:flex;gap:10px;margin-top:22px;align-items:center}
+.choice{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:8px 0;cursor:pointer}
+.choice.on{border-color:var(--blue);background:var(--blue-soft)}
+.choice .mark{font-weight:600;color:var(--blue)}
+.choice p{margin:2px 0 0;color:var(--muted);font-size:12px}
+.warnbox{border:1px solid #f3d9a6;background:#fffaf0;color:var(--amber);border-radius:8px;padding:10px 14px;font-size:13px;margin-top:10px}
+/* ---------------- 资源准备进度条：组件/语音模型后台下载时显示在页面最顶部 ---------------- */
+.assets-bar{background:#fff8e6;border-bottom:1px solid #f3d9a6;padding:10px 36px;font-size:13px;color:var(--amber);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.assets-bar .bar{display:inline-block;width:120px;height:8px;border-radius:6px;background:#f3e3c3;overflow:hidden;vertical-align:middle}
+.assets-bar .bar i{display:block;height:100%;background:var(--amber);transition:width .4s}
+.assets-bar .ok{color:var(--green)}
+.assets-bar .bad{color:var(--rose)}
+.assets-bar button{padding:3px 12px;font-size:12px}
+</style>
+</head>
+<body>
+<!-- 资源准备进度条。组件（XHS-Downloader）和语音模型由服务在后台
+     下载；两类资源都就绪后整条自动隐藏。 -->
+<div class="assets-bar hidden" id="assets-bar">
+  <span>准备中：</span>
+  <span id="assets-text"></span>
+  <button id="assets-retry" class="hidden">重试</button>
+</div>
+<!-- ============ 日常页（首次设置完成后显示） ============ -->
+<main class="wrap" id="daily">
+<header class="mast">
+  <div><h1>xhs-wiki 控制台</h1><p>定时扫描小红书收藏 · 下载解析 · 整理成知识库</p></div>
+  <div class="connection"><b id="connection"><span class="dot"></span>正在连接</b><br><span id="refreshed">读取本机状态</span></div>
+</header>
+
+<!-- 1. 状态条 + 操作 -->
+<section class="paper" aria-label="当前状态">
+  <div class="status-row">
+    <span class="pill" id="state">读取状态</span>
+    <strong id="step-label">—</strong>
+    <span class="subtle" id="elapsed"></span>
+    <span style="flex:1"></span>
+    <span class="subtle" id="next-run">下次运行 —</span>
+  </div>
+  <div class="actions">
+    <button class="primary" id="run-now">立即运行</button>
+    <button id="pause">暂停</button>
+    <button id="resume">继续</button>
+    <span class="hint" id="action-hint"></span>
+  </div>
+  <div class="body" style="border-bottom:1px solid var(--line)">
+    <h2>待你处理</h2>
+    <div class="list" id="needs"><div class="subtle">无</div></div>
+    <div class="qr hidden" id="qr-box">
+      <img id="qr-img" alt="小红书登录二维码" class="hidden">
+      <p class="placeholder hidden" id="qr-placeholder">点击「获取二维码」开始扫码登录</p>
+      <div><p class="subtle">用小红书 App 扫这个码完成登录；图片每 15 秒自动刷新。</p>
+      <p class="subtle">同时会弹出一个写着「登录专用窗口」的小窗口，不用管它，扫这里的二维码就行；登录成功后它会自动关闭。</p>
+      <button id="qr-refresh">获取二维码</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- 2. 处理进度（按阶段） + 知识库卡片 -->
+<section class="paper" aria-label="处理进度与知识库">
+  <div class="stats">
+    <div class="metric"><div class="label">待下载</div><div class="value" id="m-discovered">—</div></div>
+    <div class="metric"><div class="label">待解析</div><div class="value" id="m-downloaded">—</div></div>
+    <div class="metric"><div class="label">待入库</div><div class="value" id="m-parsed">—</div></div>
+    <div class="metric"><div class="label">待整理</div><div class="value" id="m-ingested">—</div></div>
+    <div class="metric"><div class="label">已整理</div><div class="value" id="m-distilled">—</div></div>
+  </div>
+  <div class="space-row" style="border-top:1px solid var(--line)">
+    <span>知识库主题 <b id="kb-topics">—</b></span>
+    <span>来源 <b id="kb-sources">—</b></span>
+    <span>暂缓 <b id="kb-deferred">—</b></span>
+    <span>累计清理 <b id="cleanup-total">—</b></span>
+    <span>磁盘剩余 <b id="disk-free">—</b> / <b id="disk-total">—</b></span>
+    <!-- 服务端用 /usr/bin/open -R 在访达里选中知识库目录，不会启动任何程序 -->
+    <button id="open-kb">在访达中显示知识库</button>
+    <span class="hint" id="open-kb-hint"></span>
+  </div>
+</section>
+
+<!-- 3. 失败列表 -->
+<section class="paper" aria-label="失败笔记">
+  <div class="body">
+    <h2>失败笔记（最多显示 50 条）</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>笔记</th><th>标题</th><th>阶段</th><th>错误代码</th><th></th></tr></thead>
+      <tbody id="failed"><tr><td colspan="5" class="muted">正在读取</td></tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- 4. 定时设置 -->
+<section class="paper" aria-label="定时设置">
+  <div class="body">
+    <h2>定时设置</h2>
+    <form class="settings" id="settings-form">
+      <label class="field">定时开关
+        <select id="s-enabled" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px">
+          <option value="true">开启</option><option value="false">关闭</option>
+        </select>
+      </label>
+      <label class="field">每天运行时间
+        <input type="time" id="s-time" value="03:00">
+      </label>
+      <label class="field">每次最多新增条数（1–200）
+        <input type="number" id="s-max" min="1" max="200" value="100">
+      </label>
+      <label class="field">每天自动清理已入库的原件
+        <input type="checkbox" id="s-cleanup" style="width:auto">
+      </label>
+      <button class="primary" type="submit">保存</button>
+      <span class="hint" id="settings-hint"></span>
+    </form>
+  </div>
+</section>
+
+<!-- 5. 引擎和模型设置 -->
+<section class="paper" aria-label="引擎和模型">
+  <div class="body">
+    <h2>引擎和整理模型</h2>
+    <form class="settings" id="engine-form">
+      <label class="field">引擎
+        <select id="e-engine" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px">
+          <option value="markdown">轻量（Markdown）</option>
+          <option value="llmwiki">LLM Wiki（进阶）</option>
+        </select>
+      </label>
+      <label class="field">提供方
+        <select id="e-provider" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px">
+          <option value="claude_code">Claude Code</option>
+          <option value="codex">Codex</option>
+          <option value="anthropic">Anthropic API</option>
+          <option value="openai_compatible">OpenAI 兼容接口</option>
+        </select>
+      </label>
+      <label class="field">模型名
+        <input type="text" id="e-model" placeholder="模型名">
+      </label>
+      <button class="primary" type="submit">保存引擎和模型</button>
+      <span class="hint" id="engine-hint"></span>
+    </form>
+    <!-- API 类提供方在日常页没有密钥/base_url 输入框，换 Key 要走「重新设置」 -->
+    <p class="subtle hidden" id="e-key-tip" style="margin:10px 0 0">换成 API 方式或修改密钥，请点「重新设置」。</p>
+    <p class="subtle" style="margin:10px 0 0">改了引擎或模型之后要提示：新设置只影响之后整理的内容。</p>
+    <!-- 重新设置按钮。已整理的内容不会删除，只是把首次向导再走一遍。 -->
+    <div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap">
+      <button id="restart-setup">重新设置</button>
+      <span class="subtle">重新走一遍首次设置：可以换知识库位置、引擎、整理模型和密钥。已整理的内容不会删除。换知识库位置时，本工具生成的内容会搬到新位置（新位置要是空文件夹或还不存在）；原文件夹里你自己放的其他文件不会动。</span>
+    </div>
+  </div>
+</section>
+
+<!-- 5b. 语音转写设置 -->
+<section class="paper" aria-label="语音转写设置">
+  <div class="body">
+    <h2>语音转写</h2>
+    <form class="settings" id="asr-form">
+      <label class="field">语音识别模型
+        <select id="asr-model" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px">
+          <option value="whisper">Whisper（默认，准确，约 1.5 GB）</option>
+          <option value="sensevoice">SenseVoice（快速，约 230 MB，英文效果差）</option>
+        </select>
+      </label>
+      <button class="primary" type="submit">保存</button>
+      <span class="hint" id="asr-hint"></span>
+    </form>
+    <p class="subtle" style="margin:10px 0 0">保存后缺的模型会自动在后台下载（进度显示在页面顶部），已下载的另一个模型不会被删除。</p>
+  </div>
+</section>
+
+<!-- 6. 运行记录 -->
+<section class="paper" aria-label="运行记录">
+  <div class="body">
+    <h2>运行记录（最近 30 条）</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>开始时间</th><th>触发方式</th><th>结果</th><th>扫到/新增</th><th>清理</th><th>用时</th><th>停止原因</th></tr></thead>
+      <tbody id="runs"><tr><td colspan="7" class="muted">正在读取</td></tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- 控制台要带访问令牌才能打开，说明里只给 xhs-wiki open 这个入口，不再写地址 -->
+<footer><span>每 5 秒刷新本机状态；控制台只有你本人能打开：下次在终端运行 <code>xhs-wiki open</code> 即可打开。</span></footer>
+</main>
+
+<!-- ============ 首次向导（setup_completed=false 时整页显示） ============ -->
+<main class="wizard hidden" id="wizard">
+<header class="mast">
+  <div><h1>欢迎使用 xhs-wiki</h1><p>几步设置之后，它会每天自动把你的小红书收藏整理成知识库</p></div>
+</header>
+<section class="paper">
+  <div class="steps" id="wiz-steps"></div>
+
+  <!-- 第 1 步：知识库位置 -->
+  <div id="w1">
+    <h2>第 1 步 · 知识库放在哪里</h2>
+    <p class="subtle">整理好的 Markdown 知识库会存到这个文件夹。默认放在你的用户主目录下。</p>
+    <!-- 重新设置里换位置时，服务端会把旧知识库搬过去。
+         只搬本工具生成的五类内容；原文件夹里用户自己的文件不动 -->
+    <p class="subtle">如果之前已经有知识库，换位置时会把本工具生成的内容（索引.md、暂缓.md、主题、来源和隐藏的 .xhs-wiki 文件夹）搬过去；原文件夹里你自己放的其他文件不会动。新位置要是空文件夹或还不存在的文件夹。不能用主目录本身、"文稿""桌面""下载"这类系统文件夹本身、系统目录或程序包（它们里面的子文件夹可以）。</p>
+    <label class="field" style="margin-top:12px">知识库位置（绝对路径，可用 ~ 开头）
+      <!-- 加载完成前禁用，回填保存的位置后再启用（见 renderWizard） -->
+      <input type="text" id="w-kb-root" value="~/XHS-Wiki" disabled>
+    </label>
+    <p class="hint" id="w1-hint"></p>
+  </div>
+
+  <!-- 第 2 步：引擎 -->
+  <div id="w2" class="hidden">
+    <h2>第 2 步 · 选择整理引擎</h2>
+    <div class="card on" id="w-engine-markdown">
+      <h3>轻量引擎（推荐）</h3>
+      <p>直接生成 Markdown 知识库，用 Obsidian 或任何编辑器打开就能看；速度快，不依赖别的软件。缺点是没有图谱和版本管理。</p>
+    </div>
+    <div class="card" id="w-engine-llmwiki">
+      <h3>LLM Wiki 引擎（进阶）</h3>
+      <p>在 LLM Wiki 桌面版里查看，有图谱、可以手动编辑、有版本管理。缺点是需要另外安装桌面版，整理更慢。</p>
+      <span class="badge" id="w-engine-llmwiki-badge">即将提供</span>
+    </div>
+    <p class="hint" id="w2-hint"></p>
+  </div>
+
+  <!-- 第 3 步：整理模型 -->
+  <div id="w3" class="hidden">
+    <h2>第 3 步 · 整理模型</h2>
+    <label class="field">提供方
+      <select id="w-provider" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px">
+        <option value="claude_code">Claude Code（用你的订阅，本机需已登录）</option>
+        <option value="codex">Codex（用你的订阅，本机需已登录）</option>
+        <option value="anthropic">Anthropic API（按量付费，需要 API Key）</option>
+        <option value="openai_compatible">OpenAI 兼容接口（DeepSeek、通义千问等，需要 Key）</option>
+      </select>
+    </label>
+    <label class="field" style="margin-top:10px">模型名
+      <input type="text" id="w-model" placeholder="模型名">
+    </label>
+    <label class="field hidden" id="w-base-url-row" style="margin-top:10px">接口地址 base_url（https:// 开头）
+      <input type="text" id="w-base-url" placeholder="https://…/v1">
+    </label>
+    <div class="hidden" id="w-key-row" style="margin-top:10px">
+      <label class="field">API Key（只存进 macOS 钥匙串，不写进任何文件）
+        <input type="password" id="w-key" autocomplete="off" placeholder="sk-…">
+      </label>
+      <p class="subtle">提交后输入框会立即清空；Key 不会出现在页面、日志或状态里。</p>
+    </div>
+    <p class="subtle" id="w-model-tip" style="margin-top:8px"></p>
+    <!-- 按钮单独一行（white-space:nowrap 保证按钮文字不折行），
+         测试结果的提示放到按钮下面独占一行——提示文案可能很长，
+         挤在同一行会把"保存模型设置"压成两行（375 宽的窄屏上尤其明显）。 -->
+    <div style="display:flex;gap:10px;margin-top:12px;align-items:center">
+      <button id="w-save-llm">保存模型设置</button>
+      <button id="w-test-llm">测试</button>
+    </div>
+    <p class="hint" id="w3-hint" style="margin:8px 0 0;overflow-wrap:anywhere"></p>
+  </div>
+
+  <!-- 第 4 步：扫码登录 -->
+  <div id="w4" class="hidden">
+    <h2>第 4 步 · 扫码登录小红书</h2>
+    <div class="qr" style="margin-top:6px">
+      <img id="w-qr-img" alt="小红书登录二维码" class="hidden">
+      <p class="placeholder" id="w-qr-placeholder">点击「获取二维码」开始扫码</p>
+      <div><p class="subtle">用小红书 App 扫这个码完成登录；图片每 15 秒自动刷新。</p>
+      <p class="subtle">同时会弹出一个写着「登录专用窗口」的小窗口，不用管它，扫这里的二维码就行；登录成功后它会自动关闭。</p>
+      <button id="w-qr-refresh">获取二维码</button>
+      <p class="hint" id="w4-hint"></p></div>
+    </div>
+  </div>
+
+  <!-- 第 5 步：首次导入范围 -->
+  <div id="w5" class="hidden">
+    <h2>第 5 步 · 首次导入多少收藏</h2>
+    <div class="choice on" id="w-limit-20">
+      <span class="mark">●</span>
+      <div><div>最近 20 条（推荐，先看效果）</div><p>先把最近收藏整理出来看看效果，之后每天新收藏都会自动跟进。</p></div>
+    </div>
+    <div class="choice" id="w-limit-all">
+      <span class="mark">○</span>
+      <div><div>全部收藏</div><p id="w-limit-all-desc">把已有的收藏全部整理进知识库。</p></div>
+    </div>
+    <div class="warnbox hidden" id="w-limit-all-warn">全部整理需要较长时间，并会占用模型额度（调用次数按收藏数量增加）。</div>
+    <p class="hint" id="w5-hint"></p>
+  </div>
+
+  <!-- 完成按钮 -->
+  <div class="wnav">
+    <button id="w-back">上一步</button>
+    <button class="primary" id="w-next">下一步</button>
+    <span class="hint" id="wiz-hint"></span>
+  </div>
+</section>
+</main>
+
+<script>
+/* 控制台逻辑。三条贯穿始终的规矩：
+   1. 所有文字一律用 textContent 写入，绝不拼接 HTML（防注入）；
+   2. 所有 POST 都带 X-CSRF-Token 和 Content-Type: application/json；
+   3. 不引入任何外部资源（字体、脚本、图片都没有）。 */
+'use strict';
+const $=id=>document.getElementById(id);
+const CSRF=()=>document.querySelector('meta[name=csrf-token]').content;
+const STATE_LABELS={idle:'空闲',running:'运行中',pausing:'暂停中',paused:'已暂停',needs_user:'待你处理',error:'出错'};
+const TRIGGER_LABELS={schedule:'定时',manual:'手动',followup:'追加',after_login:'扫码后',resume:'继续'};
+const RESULT_LABELS={completed:'完成',incomplete:'未完',paused:'已暂停',needs_user:'待处理',error:'出错',skipped:'跳过'};
+const RESULT_CLASS={completed:'done',incomplete:'warn',paused:'warn',needs_user:'warn',error:'bad',skipped:'warn'};
+const STAGE_LABELS={discovered:'待下载',downloaded:'待解析',parsed:'待入库',ingested:'待整理',distilled:'已整理',deferred:'暂缓'};
+/* 各提供方的模型名建议值和提示：建议值直接预填进输入框（用户可改），
+   不再只写在说明文字里。claude_code/anthropic 填 claude-haiku-5-5；
+   codex 留空 = 用 Codex 的默认模型；openai_compatible 留空等用户填服务商的模型名。 */
+const MODEL_TIPS={claude_code:'已填入建议模型名，可按需修改',codex:'留空 = 使用 Codex 的默认模型',
+  anthropic:'已填入建议模型名，可按需修改',openai_compatible:'填写服务商的模型名'};
+const MODEL_DEFAULTS={claude_code:'claude-haiku-5-5',anthropic:'claude-haiku-5-5',codex:'',openai_compatible:''};
+/* 用户是否手动改过模型名：renderWizard 每 5 秒轮询都会调 onProviderChange，
+   没有这个标记的话，轮询会把用户刚输入的模型名一遍遍冲掉。
+   切换提供方时重置标记——换了提供方，旧的模型名通常不再适用。 */
+let modelTouched=false;
+/* 用户是否手动选过向导第 3 步的提供方：没选过时轮询会把保存的
+   设置回填进下拉框（重新打开向导能看到上次的选择），选过就不再覆盖。 */
+let providerTouched=false;
+/* 第 1 步的知识库位置是否已从服务端回填过。回填之前输入框是
+   禁用的——否则用户先点进去打字，异步回填的内容会插到用户输入中间。 */
+let kbRootLoaded=false;
+let last=null,qrTimer=null,qrShown=false,wizStep=1,engineChoice='markdown',limitChoice=20;
+/* 用户是否手动点过第 5 步的导入范围选项（做法同 providerTouched）。 */
+let limitTouched=false;
+
+/* ============ 内部代码 → 大白话的对照表（全站唯一一处） ============
+   测试结果、失败原因、停止原因里出现的内部代码都先查这张表；表里没有
+   的代码原样显示（宁可看到生代码，也不猜一个可能错误的解释）。 */
+const CODE_LABELS={
+  xhs_download_blocked:'连续几条笔记下载失败，可能被平台限制了，已暂停本轮下载；下一次定时运行会再试',
+  /* ---- 模型提供方的测试结果（llm/*.py 的 check() 和错误代码） ---- */
+  claude_code_logged_in:'Claude Code 已登录，可以使用',
+  codex_logged_in:'Codex 已登录，可以使用',
+  anthropic_api_ok:'Anthropic API 可用，可以使用',
+  openai_compatible_ok:'接口可用，可以使用',
+  claude_code_not_logged_in:'Claude Code 还没登录：在终端运行 claude 并完成登录后再点测试',
+  codex_not_logged_in:'Codex 还没登录：在终端运行 codex login 并完成登录后再点测试',
+  not_logged_in:'还没有登录，请先在终端登录后再试',
+  claude_executable_not_found:'没找到 claude 命令：请先安装 Claude Code',
+  codex_executable_not_found:'没找到 codex 命令：请先安装 Codex（或 ChatGPT 桌面版）',
+  quota_or_rate_limit:'额度或调用频率受限，稍后再试',
+  claude_code_rate_limited:'Claude Code 额度或频率受限，稍后再试',
+  codex_rate_limited:'Codex 额度或频率受限，稍后再试',
+  claude_model_error_rate_limited:'Claude Code 额度或频率受限，稍后再试',
+  claude_code_exit:'claude 命令异常退出，稍后再试',
+  claude_model_error:'Claude Code 报告模型出错',
+  claude_code_output_not_json:'Claude Code 的输出不是预期的格式',
+  claude_code_output_not_object:'Claude Code 的输出格式不对',
+  claude_code_result_missing:'Claude Code 没有返回结果',
+  claude_auth_status_timeout:'查询 Claude 登录状态超时，稍后再试',
+  claude_auth_status_unparseable:'无法读取 Claude 的登录状态',
+  claude_code_timeout:'Claude Code 调用超时，稍后再试',
+  codex_timeout:'Codex 调用超时，稍后再试',
+  codex_exit:'codex 命令异常退出，稍后再试',
+  codex_output_file_missing:'Codex 没有返回结果',
+  codex_output_empty:'Codex 返回了空内容',
+  codex_login_status_timeout:'查询 Codex 登录状态超时，稍后再试',
+  api_key_unavailable:'取不到 API Key：请先保存 Key 再测试',
+  anthropic_401:'API Key 无效或被拒绝，请重新保存 Key',
+  anthropic_403:'这个 Key 没有权限调用该模型',
+  anthropic_429:'额度或调用频率受限，稍后再试',
+  anthropic_5xx:'Anthropic 服务暂时不可用，稍后再试',
+  anthropic_timeout:'请求超时，稍后再试',
+  anthropic_connection:'连不上 Anthropic，请检查网络',
+  anthropic_status:'Anthropic 接口返回异常状态',
+  anthropic_api_error:'Anthropic 接口调用出错',
+  anthropic_unexpected:'Anthropic 接口出现意外错误',
+  anthropic_no_text_block:'模型回复里没有文本内容',
+  openai_401:'API Key 无效或被拒绝，请重新保存 Key',
+  openai_403:'这个 Key 没有权限调用该模型',
+  openai_429:'额度或调用频率受限，稍后再试',
+  openai_5xx:'服务商暂时不可用，稍后再试',
+  openai_timeout:'请求超时，稍后再试',
+  openai_connection:'连不上服务商，请检查网络或接口地址',
+  openai_status:'服务商接口返回异常状态',
+  openai_api_error:'服务商接口调用出错',
+  openai_unexpected:'服务商接口出现意外错误',
+  openai_no_choice:'模型没有返回结果',
+  openai_empty_content:'模型返回了空内容',
+  auth_failed:'鉴权失败：Key 无效或没有权限',
+  timeout:'请求超时，稍后再试',
+  bad_output:'模型的回复无法解析',
+  unavailable:'服务暂时不可用',
+  llm_error:'模型调用出错',
+  /* ---- Key 保存（钥匙串） ---- */
+  key_provider_invalid:'这个提供方用登录态，不需要保存 Key',
+  key_invalid:'Key 不能为空',
+  key_save_failed:'Key 没能存进钥匙串，请重试',
+  keychain_save_timeout:'钥匙串操作超时，请重试',
+  keychain_load_timeout:'读取钥匙串超时，请重试',
+  keychain_delete_timeout:'钥匙串删除操作超时',
+  keychain_item_missing:'钥匙串里还没有这个 Key',
+  keychain_empty_password:'钥匙串里的 Key 是空的',
+  keychain_save_failed:'写进钥匙串失败',
+  keychain_delete_failed:'从钥匙串删除失败',
+  security_command_not_found:'找不到系统的钥匙串命令',
+  /* ---- 接口本身的校验错误（daemon） ---- */
+  /* 访问令牌。Cookie 失效（比如令牌被重新生成）时接口会返回它们。 */
+  console_auth_required:'访问凭证已失效：请在终端运行 xhs-wiki open 重新打开控制台',
+  console_auth_failed:'访问令牌不对：请在终端重新运行 xhs-wiki open',
+  host_or_origin_rejected:'请求来源被拒绝，请从控制台页面操作',
+  origin_missing_or_mismatched:'请求来源校验未通过，请刷新页面',
+  csrf_token_invalid:'页面令牌已失效，请刷新页面重试',
+  content_type_invalid:'请求格式不对，请刷新页面',
+  content_length_invalid:'请求长度不合法',
+  payload_too_large:'请求内容太大',
+  body_not_json_object:'请求内容格式不对',
+  already_running:'已有运行在进行',
+  run_in_progress:'有运行正在进行，请等它结束再操作',
+  scan_in_progress:'正在扫描收藏页，请稍后再扫码',
+  assets_not_managed:'资源下载不由这份服务管理',
+  cost_confirmation_required:'请先确认测试会产生少量费用',
+  note_id_invalid:'笔记编号不合法',
+  /* ---- setup 接口的校验错误（daemon + store） ---- */
+  kb_root:'知识库位置',
+  engine:'整理引擎',
+  llm_key:'模型 Key（还没保存）',
+  login:'扫码登录',
+  setup_incomplete:'首次设置还没完成',
+  kb_root_invalid:'知识库位置不合法：不能是主目录本身、"文稿""桌面""下载"这类系统文件夹本身（可以用它们里面的子文件夹）、系统目录（如 ~/Library）、磁盘的根目录或程序包，也不能含换行等特殊字符',
+  /* 位置所在的文件夹没有访问权限时，不再让请求直接断开 */
+  kb_root_inaccessible:'没有权限访问这个位置（或它所在的文件夹）：请换一个你自己能打开的文件夹',
+  kb_root_not_absolute:'知识库位置必须是绝对路径',
+  kb_root_inside_app_home:'知识库不能放在程序自己的数据目录里',
+  kb_root_contains_app_home:'这个文件夹里包含程序自己的数据目录，请换一个文件夹',
+  kb_root_not_writable:'这个位置不可写，请换一个文件夹',
+  /* 换知识库位置时搬移旧内容（有用户文件时只搬生成内容） */
+  kb_root_target_not_empty:'新位置里已经有文件了：请选一个空文件夹（或还不存在的文件夹），原来的知识库内容会搬过去',
+  kb_root_inside_old_kb:'新位置不能放在原来的知识库文件夹里面，请换一个位置',
+  kb_root_move_failed:'搬移知识库时出错，设置没有改动：请检查原位置和新位置的文件后重试',
+  /* 搬移内部的两道安全检查（一般会被归并成 kb_root_move_failed） */
+  kb_root_move_unsafe:'搬移被安全检查拦下，没有删除任何文件：请换一个和原知识库不相干的新位置',
+  kb_root_copy_mismatch:'复制后核对不一致，原来的知识库保持不动：请检查磁盘空间后重试',
+  kb_root_missing:'知识库文件夹还不存在：请在「重新设置」里重新确认知识库位置',
+  engine_invalid:'引擎类型不合法',
+  engine_unavailable:'这个引擎暂不可用',
+  engine_not_available:'所选引擎尚未提供',
+  llmwiki_binary_missing:'LLM Wiki 桌面版程序还没配置',
+  llm_invalid:'整理模型配置不合法',
+  llm_provider_invalid:'提供方不合法',
+  llm_model_invalid:'模型名不能为空，只能包含字母、数字和 . _ : / @ - 这些符号，最长 100 个字符',
+  base_url_required:'请先填写接口地址 base_url',
+  base_url_invalid:'接口地址必须是 https:// 开头（本机服务可用 http://127.0.0.1）',
+  base_url_not_allowed:'这个提供方不需要接口地址',
+  first_import_limit_invalid:'首次导入条数必须是 1–1000 的整数',
+  settings_not_dict:'设置格式不对',
+  unknown_field:'设置里有无法识别的字段',
+  field_not_editable:'这个设置项不允许在页面上修改',
+  daily_time_invalid:'运行时间格式不对（00:00–23:59）',
+  max_new_per_run_invalid:'每次最多新增条数必须是 1–200 的整数',
+  download_retry_every_days_invalid:'下载重试周期必须是 1–30 天',
+  schedule_enabled_invalid:'定时开关的值不合法',
+  headless_invalid:'无窗口开关的值不合法',
+  cleanup_enabled_invalid:'自动清理开关的值不合法',
+  setup_completed_invalid:'设置完成标记的值不合法',
+  profile_url_invalid:'主页地址格式不对',
+  llmwiki_binary_invalid:'LLM Wiki 程序路径必须是绝对路径',
+  asr_model_invalid:'语音模型只能是 Whisper 或 SenseVoice',
+  schema_version_invalid:'设置文件版本不兼容',
+  /* ---- 需要用户处理的事项代码（也作为停止原因出现） ---- */
+  xhs_login:'小红书登录已过期，请扫码',
+  xhs_blocked:'小红书要求验证或拒绝访问，已暂停',
+  disk_low:'磁盘剩余空间不足，已暂停下载',
+  llm_unavailable:'整理模型不可用，请在控制台检查设置',
+  llmwiki_review_required:'LLM Wiki 有一组整理改动待确认',
+  assets_not_ready:'组件还在下载，完成后会自动开始',
+  /* ---- 下载 / 解析常见失败 ---- */
+  network_error:'网络错误',
+  metadata_unavailable:'笔记信息暂时拿不到',
+  media_check_failed:'媒体文件不完整或读不了',
+  file_too_large:'文件超过大小上限',
+  media_missing:'下载的文件里缺少媒体',
+  download_invalid:'下载结果不完整',
+  package_write_failed:'解析结果写盘失败',
+  package_changed:'解析包损坏或被改动，需要重新解析',
+  asr_failed:'语音转写失败',
+  asr_model_missing:'所选语音模型还没下载完成，等下载完会自动继续',
+  audio_extract_failed:'从视频提取声音失败（视频文件可能已损坏）',
+  ocr_failed:'图片识字失败',
+  /* ---- 入库 / 整理阶段的失败 ---- */
+  ingest_failed:'入库失败',
+  ingest_no_result:'入库时没有这条笔记的结果',
+  distill_failed:'整理失败',
+  distill_no_result:'整理时没有这条笔记的结果',
+  card_invalid_output:'整理卡片生成结果不合格',
+  assign_invalid_output:'主题归类结果不合格',
+  topic_page_invalid_output:'主题页更新结果不合格',
+  topic_page_invalid:'主题页没写成，相关笔记稍后自动重试',
+  source_ref_missing:'台账里缺少这条笔记的入库引用',
+  no_final_commit:'LLM Wiki 没有生成最终提交',
+  consumption_not_verified:'LLM Wiki 未能确认来源已写入',
+  /* ---- 安装资源下载（assets） ---- */
+  assets_network_error:'网络错误，下载中断',
+  assets_sha256_mismatch:'下载的内容校验不过（文件损坏或来源变了）',
+  assets_size_mismatch:'下载的文件大小不对',
+  assets_extract_failed:'压缩包解压失败',
+  assets_extract_dir_missing:'压缩包结构和预期不一致',
+  assets_requirements_missing:'组件缺少依赖清单',
+  assets_uv_failed:'组件依赖安装失败',
+  assets_model_invalid:'未知的语音模型名',
+  assets_error:'资源下载出错，可点「重试」',
+  /* ---- 运行停止原因 ---- */
+  pause_requested:'手动暂停',
+  process_timeout:'处理时间达到上限，稍后自动继续',
+  scan_incomplete:'本次扫描不完整，稍后自动补扫',
+  runner_crashed:'运行进程异常退出',
+  unexpected_error:'发生未预期的错误，请查看日志',
+  finish_failed:'收尾时发生未预期的错误',
+  llm_not_logged_in:'模型未登录，已暂停模型环节',
+  llm_quota_or_rate_limit:'额度或频率受限，已暂停模型环节'
+};
+/* 代码 → 大白话。查表前先处理两类"带动态尾巴"的代码：
+   1. 冒号后缀（key_save_failed:keychain_save_timeout、claude_model_error:xxx）：
+      先查整串，查不到再用冒号前的部分查（那部分的说明通常是完整的）；
+   2. 结尾数字（keychain_item_missing_44、claude_code_exit_1、openai_status_400）：
+      去掉结尾的数字和连接的下划线/连字符再查。 */
+function plainCode(code){
+  if(code==null)return '—';
+  const s=String(code);
+  if(CODE_LABELS[s])return CODE_LABELS[s];
+  const colon=s.indexOf(':');
+  if(colon>0&&CODE_LABELS[s.slice(0,colon)])return CODE_LABELS[s.slice(0,colon)];
+  const m=s.match(/^(.+?)[_-]?\d+$/);
+  if(m&&CODE_LABELS[m[1]])return CODE_LABELS[m[1]];
+  return s||'—';
+}
+
+/* 把 /api/status 的 assets 字段渲染成页面顶部的资源准备条。
+   每类资源显示 ✓（就绪）/ 百分比或"下载中"（下载中）/ ✗ 原因（失败）；
+   progress 为 null 表示比例未知（清单没写大小），只显示"下载中"，
+   绝不显示误导性的 0%；两类都就绪时整条自动隐藏。 */
+function renderAssets(assets){
+  const bar=$('assets-bar');
+  if(!assets){bar.classList.add('hidden');return}
+  const NAMES={xhs_downloader:'下载组件',asr_model:'语音模型'};
+  const parts=[];let anyFailed=false,allReady=true;
+  for(const kind of ['xhs_downloader','asr_model']){
+    const a=assets[kind];
+    if(!a)continue;
+    if(a.state==='ready'){parts.push({text:NAMES[kind]+' ✓',cls:'ok'});continue}
+    allReady=false;
+    if(a.state==='failed'){anyFailed=true;parts.push({text:NAMES[kind]+' ✗ '+plainCode(a.error),cls:'bad'})}
+    else if(a.progress==null){
+      /* 比例未知：显示"下载中"，不画进度条 */
+      let text=NAMES[kind]+' 下载中';
+      if(a.total_bytes){text+='（'+fmtBytes(a.total_bytes)+'）'}
+      parts.push({text,cls:''})
+    }
+    else{
+      const pct=Math.round(a.progress*100);
+      let text=NAMES[kind]+' '+pct+'%';
+      if(a.total_bytes){text+='（'+fmtBytes(a.total_bytes)+'）'}
+      parts.push({text,cls:'',progress:a.progress})
+    }
+  }
+  if(allReady){bar.classList.add('hidden');return}
+  bar.classList.remove('hidden');
+  const text=$('assets-text');text.replaceChildren();
+  parts.forEach((p,i)=>{
+    if(i>0)text.append(document.createTextNode(' / '));
+    const span=el('span',p.text,p.cls);
+    if(p.progress!=null){
+      const wrap=el('span');wrap.className='bar';
+      const fill=el('i');fill.style.width=(p.progress*100).toFixed(0)+'%';
+      wrap.append(fill);span.append(wrap)
+    }
+    text.append(span)
+  });
+  $('assets-retry').classList.toggle('hidden',!anyFailed);
+}
+
+function el(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n}
+function num(v){return new Intl.NumberFormat('zh-CN').format(v==null?0:v)}
+function fmtBytes(n){if(!n)return '—';const g=n/1024**3;return g>=1?g.toFixed(2)+' GiB':(n/1024**2).toFixed(1)+' MiB'}
+function when(iso){if(!iso)return '时间未记录';const d=new Date(iso);return Number.isNaN(d.getTime())?'时间未记录':new Intl.DateTimeFormat('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(d)}
+function duration(a,b){if(!a||!b)return '—';const ms=new Date(b)-new Date(a);if(!(ms>=0))return '—';const m=Math.floor(ms/60000),h=Math.floor(m/60);return h?`${h} 小时 ${m%60} 分`:`${m} 分 ${Math.floor(ms/1000)%60} 秒`}
+function elapsedSince(iso){if(!iso)return '';return '已进行 '+duration(iso,new Date().toISOString())}
+
+/* 统一的 POST：带令牌和 JSON 头；返回 {status, data}，不抛异常。
+   timeoutMs 可选：默认 12 秒够绝大多数接口；"测试整理模型"
+   服务端可能等 claude auth status 满 60 秒，调用处要传更长的 90 秒，
+   否则页面会抢在服务端前面报"网络错误"，把真正的原因盖掉。 */
+async function post(path,body,timeoutMs=12000){
+  try{
+    const response=await fetch(path,{method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF()},
+      body:JSON.stringify(body||{}),signal:AbortSignal.timeout(timeoutMs)});
+    const data=await response.json().catch(()=>({}));
+    return {status:response.status,data};
+  }catch(error){return {status:0,data:{error:'network_error'}}}
+}
+
+/* ============ 日常页 ============ */
+
+function renderNeeds(status){
+  const box=$('needs');box.replaceChildren();
+  const items=(status.needs_user||[]);
+  if(!items.length){box.append(el('div','无','subtle'))}
+  for(const item of items){
+    const row=el('div',undefined,'needs');
+    row.append(el('div',item.title||item.code,'title'));
+    if(item.detail)row.append(el('div',item.detail,'detail'));
+    if(item.since)row.append(el('div','出现于 '+when(item.since),'detail'));
+    box.append(row);
+  }
+  return items.some(i=>i.code==='xhs_login');
+}
+/* 二维码区：不在进行且没有二维码时显示占位提示，不显示（坏的）图片；
+   只在 qr_available 为真时才给 img.src 赋值。 */
+function renderQr(login,hasLogin){
+  const active=(login&&login.active)===true,available=(login&&login.qr_available)===true;
+  $('qr-box').classList.toggle('hidden',!(hasLogin||active));
+  if($('qr-box').classList.contains('hidden')){
+    if(qrTimer){clearInterval(qrTimer);qrTimer=null}
+    return;
+  }
+  $('qr-img').classList.toggle('hidden',!available);
+  $('qr-placeholder').classList.toggle('hidden',available);
+  $('qr-refresh').textContent=active?'重新获取二维码':'获取二维码';
+  if(available&&!qrShown)refreshQr();
+  if(!qrTimer)qrTimer=setInterval(()=>{if(!$('qr-box').classList.contains('hidden'))refreshQr()},15000);
+}
+function refreshQr(){
+  const available=(last&&last.login&&last.login.qr_available)===true;
+  if(!available){qrShown=false;return}
+  $('qr-img').src='/api/login-qr.png?ts='+Date.now();
+  qrShown=true;
+}
+
+function renderRuns(runs){
+  const body=$('runs');body.replaceChildren();
+  if(!(runs||[]).length){const tr=el('tr');tr.append(el('td','还没有运行记录','muted'));body.append(tr);return}
+  for(const r of runs){
+    const tr=el('tr');
+    tr.append(el('td',when(r.started_at)));
+    tr.append(el('td',TRIGGER_LABELS[r.trigger]||r.trigger||'—'));
+    const result=el('td');result.append(el('span',RESULT_LABELS[r.result]||r.result||'—','tag '+(RESULT_CLASS[r.result]||'')));tr.append(result);
+    const scan=r.scan||{};
+    const scanCell=el('td',`${scan.visible==null?'—':scan.visible} / ${r.new_found==null?'—':r.new_found}`);
+    if(scan.incomplete){scanCell.append(el('span','（不完整）','muted'))}
+    tr.append(scanCell);
+    const cu=r.cleanup||{};
+    tr.append(el('td',cu.ran?fmtBytes(cu.freed_bytes||0):'—','muted'));
+    tr.append(el('td',duration(r.started_at,r.ended_at)));
+    tr.append(el('td',plainCode(r.stop_reason),'muted'));
+    body.append(tr);
+  }
+}
+
+function renderFailed(notes){
+  const body=$('failed');body.replaceChildren();
+  if(!(notes||[]).length){const tr=el('tr');tr.append(el('td','没有失败的笔记','muted'));body.append(tr);return}
+  for(const n of notes){
+    const tr=el('tr');
+    tr.append(el('td',n.note_id,'muted'));
+    tr.append(el('td',n.title||'（无标题）'));
+    tr.append(el('td',n.stage||'—','muted'));
+    tr.append(el('td',plainCode(n.error),'muted'));
+    const cell=el('td');
+    const btn=el('button','重试');
+    btn.addEventListener('click',async()=>{
+      btn.disabled=true;
+      const r=await post('/api/notes/retry',{note_id:n.note_id});
+      btn.disabled=false;
+      if(r.status===200){refresh()}else{btn.textContent='重试失败：'+(r.data.error||r.status)}
+    });
+    cell.append(btn);
+    tr.append(cell);
+    body.append(tr);
+  }
+}
+
+function render(data){
+  last=data;
+  const status=data.status||{};
+  $('state').textContent=STATE_LABELS[status.state]||status.state||'—';
+  $('state').className='pill '+(['error'].includes(status.state)?'bad':['idle'].includes(status.state)?'ok':['running','pausing'].includes(status.state)?'':['needs_user','paused'].includes(status.state)?'warn':'');
+  const labels=data.step_labels||{};
+  const stepText=labels[status.step]||'';
+  $('step-label').textContent=stepText&&status.message?stepText+' · '+status.message:(stepText||status.message||'—');
+  $('elapsed').textContent=['running','pausing'].includes(status.state)?elapsedSince(status.started_at):'';
+  $('next-run').textContent=data.next_run_at?('下次运行 '+when(data.next_run_at)):'定时已关闭';
+  setConnection(true);
+  $('refreshed').textContent='更新于 '+new Date().toLocaleTimeString('zh-CN',{hour12:false});
+  const running=['running','pausing'].includes(status.state);
+  $('run-now').disabled=running;
+  $('pause').disabled=!running;
+  $('resume').disabled=running||(!data.paused&&status.state!=='paused');
+  renderQr(data.login,renderNeeds(status));
+  // 处理进度：按台账阶段显示条数。
+  const counts=data.counts||{};
+  let failedTotal=0;
+  for(const key of Object.keys(counts)){if(key.startsWith('failed:'))failedTotal+=counts[key]}
+  $('m-discovered').textContent=num(counts.discovered);
+  $('m-downloaded').textContent=num(counts.downloaded);
+  $('m-parsed').textContent=num(counts.parsed);
+  $('m-ingested').textContent=num(counts.ingested);
+  $('m-distilled').textContent=num(counts.distilled);
+  // 知识库卡片。
+  const kb=data.kb||{};
+  $('kb-topics').textContent=num(kb.topics);
+  $('kb-sources').textContent=num(kb.sources);
+  $('kb-deferred').textContent=num(kb.deferred);
+  $('cleanup-total').textContent=fmtBytes(data.cleanup_total_bytes||0);
+  $('disk-free').textContent=(data.disk&&data.disk.free_gb!=null)?data.disk.free_gb+' GiB':'—';
+  $('disk-total').textContent=(data.disk&&data.disk.total_gb!=null)?data.disk.total_gb+' GiB':'—';
+  renderFailed(data.failed_notes);
+  const s=data.settings||{};
+  if(document.activeElement!==$('s-time')){$('s-enabled').value=String(s.schedule_enabled===true);
+    $('s-time').value=s.daily_time||'03:00';$('s-max').value=s.max_new_per_run||100;
+    $('s-cleanup').checked=s.cleanup_enabled===true}
+  const llm=(s.llm)||data.llm||{};
+  if(document.activeElement!==$('e-model')){$('e-engine').value=s.engine||'markdown';
+    $('e-provider').value=llm.provider||'claude_code';$('e-model').value=llm.model||''}
+  /* 日常页没有接口地址输入框，保存模型时沿用服务端已保存的地址。
+     即使用户正编辑模型名也要回填这项隐藏数据；空值要清掉旧地址，避免
+     切换提供方后沿用上一次渲染留下的数据。 */
+  $('e-model').dataset.base_url=llm.base_url||'';
+  /* 语音转写模型回填；API 类提供方提示"换 Key 请点重新设置"。 */
+  if(document.activeElement!==$('asr-model')){$('asr-model').value=s.asr_model||'whisper'}
+  updateEngineKeyTip();
+  renderRuns(data.runs);
+}
+/* 日常页提供方是 API 类（没有密钥输入框）时显示"请点重新设置"提示。 */
+function updateEngineKeyTip(){
+  const p=$('e-provider').value;
+  $('e-key-tip').classList.toggle('hidden',!(p==='anthropic'||p==='openai_compatible'));
+}
+
+async function refresh(){
+  try{
+    const response=await fetch('/api/status',{cache:'no-store',signal:AbortSignal.timeout(12000)});
+    /* 访问 Cookie 失效（比如令牌文件被重新生成）时服务端返回 403，
+       页面明确提示重新运行 xhs-wiki open，而不是笼统的"暂时无法读取"。 */
+    if(response.status===403){setConnection(false,'凭证失效：请在终端运行 xhs-wiki open');return}
+    if(!response.ok)throw Error('bad status');
+    const data=await response.json();
+    // 资源准备条对向导和日常页都要显示，放在分支之前渲染。
+    renderAssets(data.assets);
+    // 首次设置未完成：整页显示向导；完成后回到日常页。
+    $('wizard').classList.toggle('hidden',data.setup_completed===true);
+    $('daily').classList.toggle('hidden',data.setup_completed!==true);
+    if(data.setup_completed===true){render(data)}else{renderWizard(data)}
+  }catch(error){setConnection(false)}
+}
+function setConnection(ok,text){
+  const box=$('connection');box.replaceChildren();
+  const dot=el('span');dot.className='dot';if(!ok)dot.style.color='var(--amber)';
+  box.append(dot);
+  box.append(document.createTextNode(text||(ok?'已连接':'暂时无法读取')));
+}
+
+/* ============ 首次向导 ============ */
+
+const WIZ_STEP_NAMES=['知识库位置','引擎','整理模型','扫码登录','导入范围'];
+function renderWizardSteps(){
+  const box=$('wiz-steps');box.replaceChildren();
+  WIZ_STEP_NAMES.forEach((name,i)=>{
+    const step=i+1;
+    box.append(el('span',(step===wizStep?'▶ ':'')+step+'. '+name,step===wizStep?'now':''));
+  });
+}
+function showWizStep(){
+  for(const step of [1,2,3,4,5]){$('w'+step).classList.toggle('hidden',step!==wizStep)}
+  $('w-back').disabled=wizStep<=1;
+  $('w-next').textContent=wizStep>=5?'完成并开始':'下一步';
+  // 每次进入第 3 步都重新设置 base_url/Key 输入框的显示或隐藏
+  // （曾实测出现"进第 3 步时 base_url 还显示"，多一道保险）。
+  if(wizStep===3){onProviderChange()}
+  renderWizardSteps();
+}
+function wizHint(text,err){
+  const hint=$('wiz-hint');hint.className='hint'+(err?' err':'');hint.textContent=text||'';
+}
+function renderWizard(data){
+  showWizStep();
+  const s=data.settings||{};
+  const kbInput=$('w-kb-root');
+  /* 第 1 步回填已保存的知识库位置。状态加载完之前输入框是禁用的
+     （见 HTML 里的 disabled），第一次拿到数据先回填再启用——之后用户
+     点进去打字，轮询也不会把内容插到输入中间（activeElement 判断）。 */
+  if(!kbRootLoaded){
+    kbInput.value=s.kb_root||'~/XHS-Wiki';
+    kbInput.disabled=false;
+    kbRootLoaded=true;
+  }else if(document.activeElement!==kbInput){
+    kbInput.value=s.kb_root||'~/XHS-Wiki';
+  }
+  // 第 3 步的提供方：用户没手动选过时回填保存的设置。
+  if(!providerTouched&&s.llm&&s.llm.provider){$('w-provider').value=s.llm.provider}
+  onProviderChange();
+  // 第 5 步的导入范围回填：null = 选了"全部收藏"。
+  /* limitTouched：用户手动点过选项后轮询不再覆盖（做法同 providerTouched）。 */
+  if(!limitTouched){
+    const limitAll=s.first_import_limit==null;
+    limitChoice=limitAll?null:20;
+    $('w-limit-20').classList.toggle('on',!limitAll);
+    $('w-limit-20').querySelector('.mark').textContent=limitAll?'○':'●';
+    $('w-limit-all').classList.toggle('on',limitAll);
+    $('w-limit-all').querySelector('.mark').textContent=limitAll?'●':'○';
+    $('w-limit-all-warn').classList.toggle('hidden',!limitAll);
+  }
+  /* "全部收藏"的说明带上每次运行的上限 N（从设置读），
+     收藏多的话会分几天完成。 */
+  const maxNew=s.max_new_per_run||100;
+  $('w-limit-all-desc').textContent='把已有的收藏全部整理进知识库。每次运行最多新增 '+maxNew+' 条（定时设置里可改），收藏多的话会分几天完成。';
+  // 第 4 步的登录状态：设置里有主页地址 = 已登录。
+  const loggedIn=!!s.profile_url;
+  const login=data.login||{};
+  const active=login.active===true,available=login.qr_available===true;
+  /* 二维码只显示一处。扫码进行中（active）但二维码还没生成时，
+     图片和占位框都藏起来（之前占位框会显示"生成二维码中"字样的空框），
+     状态写在下面的提示文字里；没在扫码且没登录时才显示"点这里开始"的
+     占位框。 */
+  const showImg=available;
+  const showPlaceholder=!active&&!available&&!loggedIn;
+  $('w-qr-img').classList.toggle('hidden',!showImg);
+  $('w-qr-placeholder').classList.toggle('hidden',!showPlaceholder);
+  if(showImg){$('w-qr-img').src='/api/login-qr.png?ts='+Date.now()}
+  if(showPlaceholder){$('w-qr-placeholder').textContent='点击「获取二维码」开始扫码'}
+  $('w-qr-refresh').textContent=active?'重新获取二维码':'获取二维码';
+  $('w4-hint').className='hint '+(loggedIn?'ok':'');
+  $('w4-hint').textContent=loggedIn?'已登录 ✓':(active?'等待扫码…（请扫页面上的二维码）':'');
+}
+function onProviderChange(){
+  const p=$('w-provider').value;
+  $('w-model-tip').textContent=MODEL_TIPS[p]||'';
+  // Key 输入框只在 API 类提供方（anthropic / openai_compatible）显示；
+  // base_url 输入框只在 OpenAI 兼容接口显示（其他方式隐藏且不提交）。
+  $('w-key-row').classList.toggle('hidden',!(p==='anthropic'||p==='openai_compatible'));
+  $('w-base-url-row').classList.toggle('hidden',p!=='openai_compatible');
+  // 模型名预填建议值：只在用户没手动改过时才写，避免轮询冲掉用户输入。
+  if(!modelTouched){$('w-model').value=MODEL_DEFAULTS[p]||''}
+}
+/* 引擎卡片选择。LLM Wiki 卡片选中时先向服务端做一次健康检查，把原因
+   显示在卡片角标上（"尚未提供"或健康检查的具体结果）。 */
+async function pickEngine(name){
+  engineChoice=name;
+  $('w-engine-markdown').classList.toggle('on',name==='markdown');
+  $('w-engine-llmwiki').classList.toggle('on',name==='llmwiki');
+  if(name==='llmwiki'){
+    const badge=$('w-engine-llmwiki-badge');badge.textContent='检测中…';
+    const r=await post('/api/setup/engine',{engine:'llmwiki'});
+    if(r.status===200){badge.textContent='可用'}
+    else{badge.textContent='不可用：'+plainCode(r.data.reason||r.data.error||'未知原因')}
+  }
+}
+
+async function wizNext(){
+  wizHint('');
+  if(wizStep===1){
+    const path=$('w-kb-root').value.trim();
+    /* 换位置时服务端要把旧知识库搬过去，跨磁盘搬可能要
+       一会儿，所以给 2 分钟超时；失败原因用大白话显示。 */
+    wizHint('正在保存知识库位置…');
+    const r=await post('/api/setup/kb-root',{path},120000);
+    if(r.status!==200){wizHint('知识库位置保存失败：'+plainCode(r.data.error||r.status),true);return}
+    /* moved 为 generated 时只搬了本工具生成的内容，原文件夹
+       里用户自己的文件没动，提示里说清楚，免得用户以为东西丢了。 */
+    if(r.data.migrated&&r.data.moved==='generated'){wizHint('已把本工具生成的内容搬到新位置 ✓（原文件夹里你自己的文件没有动）')}
+    else if(r.data.migrated){wizHint('已把原来的知识库整体搬到新位置 ✓')}else{wizHint('')}
+    wizStep=2;
+  }else if(wizStep===2){
+    const r=await post('/api/setup/engine',{engine:engineChoice});
+    if(r.status!==200){wizHint('引擎保存失败：'+(r.data.reason||r.data.error||r.status),true);return}
+    wizStep=3;
+  }else if(wizStep===3){
+    const saved=await saveLlm();
+    if(!saved){return}
+    wizStep=4;
+  }else if(wizStep===4){
+    wizStep=5;
+  }else if(wizStep===5){
+    // 完成并开始：先保存导入范围，再请求 finish。
+    const r=await post('/api/setup/first-import',{limit:limitChoice});
+    if(r.status!==200){wizHint('导入范围保存失败：'+(r.data.error||r.status),true);return}
+    const f=await post('/api/setup/finish');
+    if(f.status!==200){
+      const missing=(f.data.missing||[]).map(m=>plainCode(m)).join('、');
+      wizHint('还有条件不满足：'+(missing||plainCode(f.data.error)||f.status),true);return}
+    /* 资源没就绪时也可以点"完成并开始"——运行被服务端拦下，等
+       组件下载完成后自动开始，页面上如实提示而不是"已开始"。 */
+    if(f.data.assets_ready===false){
+      wizHint('设置完成。组件下载完成后会自动开始导入 ✓')
+    }else{
+      wizHint('设置完成，已开始第一次整理 ✓')
+    }
+    refresh();
+  }
+  showWizStep();
+}
+/* 保存模型设置；用 API 的提供方顺带保存 Key（密码框提交后立即清空）。 */
+async function saveLlm(){
+  const hint=$('w3-hint');
+  const provider=$('w-provider').value;
+  let model=$('w-model').value.trim();
+  if(provider==='codex'&&!model){model='default'}  // 留空 = Codex 默认模型
+  const base_url=provider==='openai_compatible'?$('w-base-url').value.trim():null;
+  const r=await post('/api/setup/llm',{provider,model,base_url});
+  if(r.status!==200){hint.className='hint err';hint.textContent='保存失败：'+plainCode(r.data.error||r.status);return false}
+  if(provider==='anthropic'||provider==='openai_compatible'){
+    const key=$('w-key').value.trim();
+    if(key){
+      const kr=await post('/api/setup/key',{provider,key});
+      $('w-key').value='';  // 立即清空，Key 不留在页面里
+      if(kr.status!==200){hint.className='hint err';hint.textContent='Key 保存失败：'+(kr.data.error||kr.status);return false}
+    }
+  }
+  hint.className='hint ok';hint.textContent='已保存 ✓';
+  return true;
+}
+
+/* ============ 事件绑定 ============ */
+
+$('run-now').addEventListener('click',async()=>{await post('/api/run-now');refresh()});
+$('pause').addEventListener('click',async()=>{await post('/api/pause');refresh()});
+$('resume').addEventListener('click',async()=>{await post('/api/resume');refresh()});
+$('qr-refresh').addEventListener('click',async()=>{await post('/api/login');refresh()});
+/* 资源下载失败时的「重试」按钮（顶部资源条里）。 */
+$('assets-retry').addEventListener('click',async()=>{await post('/api/assets/retry');refresh()});
+/* 服务端只在访达里选中知识库目录；位置不合规或目录不存在时
+   不会打开任何东西，这里把原因用大白话显示出来。 */
+$('open-kb').addEventListener('click',async()=>{
+  const hint=$('open-kb-hint');
+  const r=await post('/api/open-kb');
+  if(r.status===200){hint.className='hint ok';hint.textContent='已在访达中显示'}
+  else{hint.className='hint err';hint.textContent='打不开：'+plainCode(r.data.error||r.status)}
+});
+
+$('settings-form').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const hint=$('settings-hint');
+  const time=$('s-time').value,max=Number($('s-max').value);
+  if(!/^[0-2]\d:[0-5]\d$/.test(time)||time>='24:00'){hint.className='hint err';hint.textContent='时间格式不对，请用 00:00–23:59';return}
+  if(!Number.isInteger(max)||max<1||max>200){hint.className='hint err';hint.textContent='每次最多新增条数必须是 1–200 的整数';return}
+  const r=await post('/api/settings',{schedule_enabled:$('s-enabled').value==='true',daily_time:time,max_new_per_run:max,cleanup_enabled:$('s-cleanup').checked});
+  if(r.status===200){
+    hint.className='hint ok';
+    const next=r.data.next_run_at;
+    hint.textContent=next&&((new Date(next)-Date.now())<60000)?'已保存。今天的运行时间已过且今天还没跑过，将在 30 秒内补跑一次'
+      :next?('已保存，下次运行 '+when(next)):'已保存，定时已关闭';
+  }else{hint.className='hint err';hint.textContent='保存失败：'+plainCode(r.data.error||r.status)}
+});
+
+/* 引擎/模型保存：改了以后提示"新设置只影响之后整理的内容"。 */
+$('engine-form').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const hint=$('engine-hint');
+  let model=$('e-model').value.trim();
+  const provider=$('e-provider').value;
+  if(provider==='codex'&&!model){model='default'}
+  const r=await post('/api/setup/llm',{provider,model,base_url:provider==='openai_compatible'?($('e-model').dataset.base_url||null):null});
+  if(r.status===200){
+    hint.className='hint ok';hint.textContent='已保存。新设置只影响之后整理的内容';
+    const er=await post('/api/setup/engine',{engine:$('e-engine').value});
+    if(er.status!==200){hint.className='hint err';hint.textContent='引擎保存失败：'+(er.data.reason||er.data.error||er.status)}
+    refresh();
+  }else{hint.className='hint err';hint.textContent='保存失败：'+plainCode(r.data.error||r.status)}
+});
+
+/* 语音转写模型保存。写入 asr_model 后服务端会立即唤醒资源线程：
+   缺的模型自动在后台下载，进度显示在顶部；已下载的另一个模型不删。 */
+$('asr-form').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const hint=$('asr-hint');
+  const model=$('asr-model').value;
+  if(model!=='whisper'&&model!=='sensevoice'){hint.className='hint err';hint.textContent='语音模型只能是 Whisper 或 SenseVoice';return}
+  hint.className='hint';hint.textContent='保存中…';
+  const r=await post('/api/settings',{asr_model:model});
+  if(r.status===200){hint.className='hint ok';hint.textContent='已保存 ✓ 缺的模型会自动在后台下载'}
+  else{hint.className='hint err';hint.textContent='保存失败：'+plainCode(r.data.error||r.status)}
+});
+
+/* 重新设置。确认后把 setup_completed 置回 false（其他设置保留），
+   页面切回向导，各步回填已保存的值；有运行在进行时提示稍后再点。 */
+$('restart-setup').addEventListener('click',async()=>{
+  const ok=confirm('重新走一遍首次设置：可以换知识库位置、引擎、整理模型和密钥。已整理的内容不会删除。要继续吗？');
+  if(!ok)return;
+  const r=await post('/api/setup/restart');
+  if(r.status===200){refresh();return}
+  if(r.status===409&&r.data&&r.data.error==='run_in_progress'){
+    alert('请等当前运行结束，再点「重新设置」');return}
+  alert('操作失败：'+plainCode(r.data&&r.data.error||r.status));
+});
+/* 提供方切换时同步"换 Key 请点重新设置"的提示。 */
+$('e-provider').addEventListener('change',updateEngineKeyTip);
+
+/* 向导事件 */
+$('w-back').addEventListener('click',()=>{if(wizStep>1){wizStep-=1;showWizStep();wizHint('')}});
+$('w-next').addEventListener('click',wizNext);
+$('w-model').addEventListener('input',()=>{modelTouched=true});
+$('w-provider').addEventListener('change',()=>{modelTouched=false;providerTouched=true;onProviderChange()});
+$('w-engine-markdown').addEventListener('click',()=>pickEngine('markdown'));
+$('w-engine-llmwiki').addEventListener('click',()=>pickEngine('llmwiki'));
+$('w-save-llm').addEventListener('click',saveLlm);
+/* 测试按钮：API 类提供方会真实发一次最小请求，先弹确认框告知费用。 */
+$('w-test-llm').addEventListener('click',async()=>{
+  const hint=$('w3-hint');
+  const provider=$('w-provider').value;
+  const saved=await saveLlm();
+  if(!saved){return}
+  let body={};
+  if(provider==='anthropic'||provider==='openai_compatible'){
+    if(!confirm('测试会对 '+provider+' 发出一次最小请求，这会产生极少量费用。要继续吗？')){
+      hint.className='hint';hint.textContent='已取消测试';return}
+    body={confirm_cost:true};
+  }
+  /* 测试最长可能等约 1 分钟（服务端检查登录态的超时是 60 秒），
+     所以：请求用 90 秒超时（比服务端长，保证能拿到真正的原因）；
+     等待期间禁用两个按钮，防止重复提交；提示文案说明要等多久。 */
+  const saveBtn=$('w-save-llm'),testBtn=$('w-test-llm');
+  saveBtn.disabled=true;testBtn.disabled=true;
+  hint.className='hint';hint.textContent='测试中…（最长约 1 分钟）';
+  const r=await post('/api/setup/test-llm',body,90000);
+  saveBtn.disabled=false;testBtn.disabled=false;
+  if(r.status===200&&r.data.ok){hint.className='hint ok';hint.textContent='模型可用 ✓ '+plainCode(r.data.reason)}
+  else{hint.className='hint err';hint.textContent='模型不可用：'+plainCode((r.data&&r.data.reason)||(r.data&&r.data.error)||r.status)}
+});
+$('w-qr-refresh').addEventListener('click',async()=>{await post('/api/login');refresh()});
+$('w-limit-20').addEventListener('click',()=>{
+  limitTouched=true;limitChoice=20;$('w-limit-20').classList.add('on');$('w-limit-20').querySelector('.mark').textContent='●';
+  $('w-limit-all').classList.remove('on');$('w-limit-all').querySelector('.mark').textContent='○';
+  $('w-limit-all-warn').classList.add('hidden');
+});
+$('w-limit-all').addEventListener('click',()=>{
+  limitTouched=true;limitChoice=null;$('w-limit-all').classList.add('on');$('w-limit-all').querySelector('.mark').textContent='●';
+  $('w-limit-20').classList.remove('on');$('w-limit-20').querySelector('.mark').textContent='○';
+  $('w-limit-all-warn').classList.remove('hidden');
+});
+
+onProviderChange();
+showWizStep();
+refresh();setInterval(refresh,5000);
+</script>
+</body></html>

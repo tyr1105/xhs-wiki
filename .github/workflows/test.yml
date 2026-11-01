@@ -1,0 +1,28 @@
+# 自动测试：每次推送到 main、每个 PR，都在 Apple 芯片和 Intel 两种 macOS 上跑全部测试。
+# 测试不联网、不调用真实模型，只需要安装依赖。
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: 安装依赖
+        run: uv sync --locked
+      - name: 运行测试
+        run: uv run pytest -q

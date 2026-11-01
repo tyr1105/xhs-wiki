@@ -1,0 +1,41 @@
+# 开发过程文档（任务卡、进度、内部决策）只留在本机，不进仓库
+.dev/
+# 给内部 AI 工程师的开发说明，引用了不公开的 .dev/，只留在本机（外部贡献者请看 CONTRIBUTING.md）
+AGENTS.md
+
+# Python 环境与缓存
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+
+# 运行时数据：任何人的收藏、知识库、登录状态、模型文件都不能进仓库
+# （默认都在仓库之外；下面这些规则防止有人把数据目录指到仓库里后误提交）
+*.sqlite3
+*.sqlite3-*
+*.private.json
+settings.json
+runs.jsonl
+status.json
+scheduler.json
+console-token
+open-console.html
+login-qr*.png
+llmwiki-*/
+llmwiki-sources.json
+llm-workdir/
+browser-profile/
+models/
+vendor/
+work/
+logs/
+.xhs-wiki/
+
+# 本机配置与密钥
+.env
+.env.*
+.claude/
+.DS_Store

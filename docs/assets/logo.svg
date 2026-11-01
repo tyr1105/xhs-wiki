@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="t">
+  <title id="t">xhs-wiki</title>
+  <!-- 一页带横线的纸：代表整理好的知识库 -->
+  <rect x="18" y="14" width="80" height="100" rx="12" fill="#FFFFFF" stroke="#1F2328" stroke-width="6"/>
+  <line x1="34" y1="58" x2="82" y2="58" stroke="#57606A" stroke-width="6" stroke-linecap="round"/>
+  <line x1="34" y1="76" x2="82" y2="76" stroke="#57606A" stroke-width="6" stroke-linecap="round"/>
+  <line x1="34" y1="94" x2="66" y2="94" stroke="#57606A" stroke-width="6" stroke-linecap="round"/>
+  <!-- 书签丝带：代表"收藏"，青绿色是项目的强调色 -->
+  <path d="M74 6 H106 V50 L90 38 L74 50 Z" fill="#0E7C66"/>
+</svg>
