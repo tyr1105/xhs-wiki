@@ -254,7 +254,7 @@ Codex 是 OpenAI 的编程助手命令行，ChatGPT 付费方案里包含。本�
 
 ## 前提条件
 
-- **Mac：macOS 13 或更新版本。** 支持 Apple 芯片和 Intel；可选的 LLM Wiki 引擎仅支持 Apple 芯片。自动测试（GitHub Actions）在 Apple 芯片的 macOS 14 上运行；Intel（macOS 15）的测试任务已经配置，但还没有跑通。作者的真机安装都在 Apple 芯片的 Mac 上完成，Intel 机型和 macOS 13 还没有真机验证，遇到问题欢迎[提 Issue](https://github.com/tyr1105/xhs-wiki/issues)。
+- **Mac：macOS 13 或更新版本。** 支持 Apple 芯片和 Intel；可选的 LLM Wiki 引擎仅支持 Apple 芯片。自动测试（GitHub Actions）在 Apple 芯片和 Intel 两种 macOS 15 上运行全部测试。作者的真机安装都在 Apple 芯片的 Mac 上完成，Intel 机型和 macOS 13 还没有真机验证，遇到问题欢迎[提 Issue](https://github.com/tyr1105/xhs-wiki/issues)。
 - **Google Chrome：** 需安装在标准的“应用程序”目录，用来扫码登录和读取自己的收藏。
 - **整理模型：** 准备[四种方式](#整理模型怎么选)中的一种，使用自己的订阅或 API 额度。
 - **磁盘：** 安装时检查至少有 **10 GiB** 空闲；之后每次运行开始前也要求剩余不少于 10 GiB，不够就不开跑，并在“待你处理”里提示；下载收藏原件时跌破 10 GiB 也会停止下载。程序环境和默认语音模型装好后还会再占 2 GiB 多，所以建议安装前留出 13 GiB 左右。默认语音模型约 **1.5 GiB**；快速模式约 **227 MiB**（含很小的语音检测模型）。还需为下载中的原件和知识库留空间。
@@ -523,7 +523,7 @@ bash uninstall.sh
 
 - **现在可以用：** 一条命令安装（不需要 Homebrew、git、ffmpeg；国内网络可加 `--mirror cn`）、控制台 5 步向导、每天定时跟进新收藏、本机识别图片文字和转写视频、四种整理模型、轻量 Markdown 引擎、Claude Code 查询 Skill、原件核验后清理。
 - **即将提供：** LLM Wiki 引擎所需程序的正式下载渠道（进阶选项，仅支持 Apple 芯片，整理模型仅支持 Claude Code 和 Codex）。
-- **目前的限制：** 只支持 macOS 13 或更新版本，Intel 机型和 macOS 13 还没有真机验证（Intel 的自动测试也还没跑通）；开源版完整跑通过的是导入最近 20 条，几百条以上的大批量导入还没有完整实测过；控制台只有中文界面；带出处的提问目前通过 Claude Code 的查询 Skill 完成，选 Codex 或 API 时，它们只负责整理；知识库里的原帖链接在电脑浏览器里打不开（见[原帖链接打不开？](#原帖链接打不开)）。
+- **目前的限制：** 只支持 macOS 13 或更新版本，Intel 机型和 macOS 13 还没有真机验证（Intel 的自动测试已经通过）；开源版完整跑通过的是导入最近 20 条，几百条以上的大批量导入还没有完整实测过；控制台只有中文界面；带出处的提问目前通过 Claude Code 的查询 Skill 完成，选 Codex 或 API 时，它们只负责整理；知识库里的原帖链接在电脑浏览器里打不开（见[原帖链接打不开？](#原帖链接打不开)）。
 
 每个版本改了什么，见 [CHANGELOG.md](CHANGELOG.md)。
 

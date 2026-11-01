@@ -284,6 +284,6 @@ for stage in [download, parse, ingest, distill]:
 ## 14. 测试和质量门
 
 - 用 pytest。所有测试都在临时目录里进行，用假的浏览器、子进程和模型，不访问网络、不调用真实模型。SDK 类的提供方用真实 SDK 客户端加假的 HTTP 层测试，确保调用方式和 SDK 一致。
-- GitHub Actions 在 Apple 芯片（macos-14）和 Intel（macos-15-intel）两种 macOS 上跑全部测试。
+- GitHub Actions 在 Apple 芯片（macos-15）和 Intel（macos-15-intel）两种 macOS 15 上跑全部测试。
 - 真实网站、真实模型的联调由维护者手动进行，结果不进仓库。
 - 发布前要做敏感信息扫描：个人路径、主页编号、签名链接、Key 的特征。开发环境和贡献流程见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
