@@ -14,6 +14,7 @@ Don't let your saves gather dust: turn your RedNote (Xiaohongshu) favorites into
 
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-000?style=flat-square&logo=apple)
 ![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue?style=flat-square)
+[![Tests](https://github.com/tyr1105/xhs-wiki/actions/workflows/test.yml/badge.svg)](https://github.com/tyr1105/xhs-wiki/actions/workflows/test.yml)
 ![Claude Code Skill](https://img.shields.io/badge/Claude%20Code-Skill-8250df?style=flat-square)
 ![Output: Markdown / Obsidian](https://img.shields.io/badge/output-Markdown%20%2F%20Obsidian-0E7C66?style=flat-square)
 
