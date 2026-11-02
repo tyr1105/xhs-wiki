@@ -83,11 +83,13 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # 安装资源的下载/校验（install.sh 调用；也供用户手动补装）。
     assets_parser = sub.add_parser(
-        "assets", help="安装资源的下载和校验（下载组件、语音模型）")
+        "assets", help="安装资源的下载和校验（下载组件、语音模型、LLM Wiki 后台）")
     assets_sub = assets_parser.add_subparsers(dest="assets_command",
                                               required=True)
     assets_sub.add_parser("install-downloader",
                           help="下载并安装 XHS-Downloader 及其依赖")
+    assets_sub.add_parser("install-llmwiki",
+                          help="下载并校验 LLM Wiki 后台，自动配置程序路径")
     model_parser = assets_sub.add_parser(
         "install-model", help="下载并安装语音模型（whisper 或 sensevoice）")
     model_parser.add_argument("name", choices=["whisper", "sensevoice"],
@@ -285,6 +287,24 @@ def _cmd_doctor(args, deps_factory=None) -> int:
             _check(f"整理模型（{provider_name}）", False, type(error).__name__)
     except Exception as error:
         _check("整理模型", False, type(error).__name__)
+
+    # LLM Wiki 依赖另一个固定版本的后台和本机命令行助手；只在选了它时
+    # 核对，避免给轻量引擎用户制造多余的缺组件提示。这里只查找，不启动后台。
+    if settings["engine"] == "llmwiki":
+        from . import assets
+        from .llm.claude_code import find_claude
+        from .llm.codex import find_codex
+
+        ready = assets.llmwiki_ready(home)
+        _check("LLM Wiki 后台程序", ready,
+               "文件校验通过" if ready else "请运行 xhs-wiki assets install-llmwiki")
+        provider_name = settings["llm"]["provider"]
+        find_agent = {"claude_code": find_claude, "codex": find_codex}.get(provider_name)
+        found = bool(find_agent()) if find_agent is not None else False
+        _check("LLM Wiki 整理工具", found,
+               f"{provider_name} 已找到" if found else
+               ("llmwiki_agent_missing" if find_agent is not None
+                else "llmwiki_provider_unsupported"))
 
     # 7. 知识库目录可写（**不创建任何目录**）。
     #    - 目录已存在：检查它本身能不能写；
@@ -563,13 +583,20 @@ def _cmd_open(args, opener=None) -> int:
 # ---------------------------------------------------------------------------
 
 def _cmd_assets(args) -> int:
-    """assets 子命令：下载组件 / 语音模型的下载、安装和核对。
+    """assets 子命令：下载组件 / 语音模型 / LLM Wiki 的下载、安装和核对。
 
     真实的网络和 uv 都在 assets.py 里；这里只做分发和打印。模型已齐全时
     install-model 先提示再跳过（安装脚本可重复执行）。
     """
     from . import assets
     home = config.app_home()
+    if args.assets_command == "install-llmwiki":
+        _print("开始下载并校验 LLM Wiki 后台程序……")
+        binary = assets.install_llmwiki(home)
+        # 路径只能由本机安装器写回，控制台的设置白名单不因此扩大。
+        ServiceStore(home).update_settings({"llmwiki_binary": str(binary)})
+        _print("LLM Wiki 后台程序已就绪，已自动配置")
+        return 0
     if args.assets_command == "install-downloader":
         _print("开始下载并安装 XHS-Downloader（下载组件）……")
         directory = assets.install_xhs_downloader(home)

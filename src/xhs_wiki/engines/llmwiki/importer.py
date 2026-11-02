@@ -147,6 +147,31 @@ def _wait_task(ctx: ApiContext, task_id: str, *, timeout_s: float = TASK_TIMEOUT
         ctx.sleep(POLL_INTERVAL_S)
 
 
+def _committed_source(task: dict, sha256_hex: str) -> tuple:
+    """从提交任务的结果里取出我们这条来源的 (source_id, version_id)。
+
+    后台在任务结果 ``result.reference.completion`` 里列出这次提交新增
+    （newSources）和更新（updatedSources）的来源，每项带 sourceId、
+    versionId、wikiPath、contentHash。contentHash 就是导入文件的 sha256，
+    所以只认 contentHash 等于我们导入文件指纹的那一项；认不出、或者认出
+    不止一项，都返回 (None, None)，由调用方按"结果不明"停下。
+    """
+
+    reference = ((task or {}).get("result") or {}).get("reference") or {}
+    completion = reference.get("completion") if isinstance(reference, dict) else None
+    if not isinstance(completion, dict):
+        return None, None
+    entries = []
+    for key in ("newSources", "updatedSources"):
+        value = completion.get(key)
+        if isinstance(value, list):
+            entries.extend(e for e in value if isinstance(e, dict))
+    matches = [e for e in entries if e.get("contentHash") == sha256_hex]
+    if len(matches) != 1:
+        return None, None
+    return matches[0].get("sourceId"), matches[0].get("versionId")
+
+
 def _checked_target(items: list, locator: str, sha256_hex: str) -> dict:
     """在会话条目里锁定我们自己这一项（normalizedLocator + sha256）。
 
@@ -284,12 +309,13 @@ def import_package(ctx: ApiContext, package) -> dict:
                 "code": f"native_task_{task.get('status')}"}
 
     # ---- 核实：条目完成，来源真的出现在 /sources 里。
+    # 后台的导入条目不带来源编号（ImportItem 没有 sourceId 字段）；编号只
+    # 写在提交任务结果的 reference.completion 里（2026-11-02 真机联调确认）。
     items = api_get(ctx, session_root).get("items") or []
     target = _checked_target(items, locator, sha256_hex)
     if target.get("status") != "completed":
         raise ValueError("native_source_commit_not_verified")
-    source_id = target.get("sourceId")
-    version_id = target.get("versionId") or target.get("currentVersionId")
+    source_id, version_id = _committed_source(task, sha256_hex)
     if not source_id or not version_id:
         raise ValueError("native_source_commit_not_verified")
     if not _source_exists(ctx, source_id, version_id):

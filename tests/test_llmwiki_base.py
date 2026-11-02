@@ -29,6 +29,7 @@ import threading
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -834,6 +835,9 @@ def agent_env(tmp_path, monkeypatch):
 
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("USER", "tester")
+    # X12 改为读取系统账户；替换 pwd 查询，避免脚本写入真实用户路径。
+    monkeypatch.setattr(agents.pwd, "getpwuid", lambda uid: SimpleNamespace(
+        pw_dir=str(tmp_path / "home"), pw_name="tester"))
     bin_dir = tmp_path / "llmwiki-bin"
     paths = agents.install_wrappers(
         claude_path=_fake_tool(tmp_path, "claude"),

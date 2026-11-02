@@ -2,6 +2,25 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0] - 2026-11-02
+
+### 新增
+- LLM Wiki 进阶引擎接入首次向导：仅 Apple 芯片，按需下载无窗口后台，显示进度和中文原因；就绪后自动健康检查，健康才保存选择。
+- `xhs-wiki assets install-llmwiki` 下载、校验并自动配置后台路径；`doctor` 检查后台文件及所选 Claude Code / Codex 命令。
+- 后台压缩包和程序本体分别按固定 SHA-256 校验，复用系统 curl 断点续传；失败不留下可用的半成品。
+
+### 修复
+- 守护进程与运行进程共用引擎工厂；向导健康检查结束后关闭后台，不遗留进程。
+- 后台启动前自动生成所选提供方的包装脚本，支持只安装 Claude Code 或只安装 Codex；从系统账户读取 HOME/USER，安全引用路径与模型名。
+- Claude 支持时在打印模式整理调用中启用 `--safe-mode` 和 `--no-session-persistence`，后台已传入的参数不重复追加；向导只允许 LLM Wiki 使用 Claude Code 或 Codex，并在完成设置时再次核对。
+- LLM Wiki 的非必需资源不会阻止轻量引擎运行。
+
+- 真机联调修正：导入后从提交任务结果里读取来源编号（后台的导入条目本身不带编号）；包装脚本写入 claude 的链接路径而不是带版本号的文件，Claude Code 升级后不会失效。
+
+### 说明
+- 后台程序：[tyr1105/llm-wiki-desktop](https://github.com/tyr1105/llm-wiki-desktop) 的 `headless-v2.0.6-1`，由 GitHub Actions 构建，附件 SHA-256 `bc2d18a71ea5416b6ce01a88bab102da0d34db018ff60bd92506a782bdcd50e9`。
+- 整理出的页面语言跟随 LLM Wiki 桌面版的界面语言；没装桌面版时默认英文。
+
 ## [0.1.0] - 2026-11-02
 
 第一个公开版本。

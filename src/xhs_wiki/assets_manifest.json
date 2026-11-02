@@ -4,6 +4,15 @@
     "sha256": "6fc437a27de2850ce2babb392b0bc32b438d0d2a3eaa0a281077abb5964df957",
     "extract_dir": "XHS-Downloader-2.8"
   },
+  "llmwiki": {
+    "version": "2.0.6-1",
+    "url": "https://github.com/tyr1105/llm-wiki-desktop/releases/download/headless-v2.0.6-1/llm-wiki-headless-2.0.6-1-aarch64-apple-darwin.tar.gz",
+    "sha256": "bc2d18a71ea5416b6ce01a88bab102da0d34db018ff60bd92506a782bdcd50e9",
+    "size": 17580346,
+    "extract_dir": "llm-wiki-headless-2.0.6-1-aarch64-apple-darwin",
+    "binary": "llm-wiki-desktop",
+    "binary_sha256": "b27e003362336464e3374c3cb547d32a5c18d53c2325475964bb5918f1ddef02"
+  },
   "whisper": {
     "base": "https://huggingface.co/dropbox-dash/faster-whisper-large-v3-turbo/resolve/0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf/",
     "dir": "whisper-large-v3-turbo",

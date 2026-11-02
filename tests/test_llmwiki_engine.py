@@ -363,13 +363,27 @@ class StatefulWikiHandler(BaseHTTPRequestHandler):
             raise _HttpError(400, "API_REQUEST_INVALID")
         state.counters["task"] += 1
         commit_id = f"task-{state.counters['task']:03d}"
-        state.tasks[commit_id] = {"id": commit_id, "status": "succeeded"}
         state.counters["source"] += 1
         source_id = f"src-{state.counters['source']:03d}"
         version_id = f"ver-{state.counters['source']:03d}"
-        targets[0].update({"status": "completed", "selected": False,
-                           "sourceId": source_id, "versionId": version_id})
         locator = targets[0]["input"]["normalizedLocator"]
+        # 与真实后台一致（2026-11-02 真机联调）：导入条目本身不带来源编号，
+        # 编号只写在提交任务结果的 reference.completion.newSources 里，
+        # contentHash 是导入文件的 sha256。
+        state.tasks[commit_id] = {
+            "id": commit_id, "status": "succeeded",
+            "result": {"reference": {"completion": {
+                "newSources": [{
+                    "sourceId": source_id, "versionId": version_id,
+                    "wikiPath": f"wiki/sources/{source_id}.md",
+                    "contentHash": hashlib.sha256(
+                        Path(locator).read_bytes()).hexdigest(),
+                }],
+                "updatedSources": [], "duplicateSkips": [],
+                "warnings": [], "failures": [],
+            }}},
+        }
+        targets[0].update({"status": "completed", "selected": False})
         state.sources[source_id] = {
             "versionId": version_id, "title": Path(locator).name,
             "consumed": False,
@@ -1081,7 +1095,8 @@ class TestEngine:
                 raise EngineUnavailable("llmwiki_desktop_running")
 
         engine = LlmWikiEngine(tmp_path / "kb", tmp_path / "home",
-                               SETTINGS, backend=Busy())
+                               SETTINGS, backend=Busy(),
+                               wrapper_installer=lambda **kwargs: {})
         assert engine.health() == (False, "llmwiki_desktop_running")
 
     def test_skill_context(self, wiki):
@@ -1273,3 +1288,50 @@ class TestRunnerGlue:
                   engine=engine)
         rig.run()
         assert engine.closed == 1
+
+
+# ---- 提交结果里认出我们这条来源（2026-11-02 真机联调后补） -----------------
+
+def _commit_task(new=(), updated=()):
+    """按真实后台的格式拼一个提交任务：编号在 result.reference.completion 里。"""
+
+    return {"status": "succeeded", "result": {"reference": {"completion": {
+        "newSources": list(new), "updatedSources": list(updated),
+        "duplicateSkips": [], "warnings": [], "failures": []}}}}
+
+
+class TestCommittedSource:
+    """importer._committed_source：只认内容指纹等于导入文件 sha256 的那一项。"""
+
+    HASH = "ab" * 32
+
+    def _entry(self, sid, vid, content_hash):
+        return {"sourceId": sid, "versionId": vid,
+                "wikiPath": f"wiki/sources/local/{sid}.md", "contentHash": content_hash}
+
+    def test_new_source_matched_by_content_hash(self):
+        from xhs_wiki.engines.llmwiki.importer import _committed_source
+        task = _commit_task(new=[self._entry("s1", "v1", self.HASH)])
+        assert _committed_source(task, self.HASH) == ("s1", "v1")
+
+    def test_updated_source_also_counts(self):
+        from xhs_wiki.engines.llmwiki.importer import _committed_source
+        task = _commit_task(updated=[self._entry("s2", "v9", self.HASH)])
+        assert _committed_source(task, self.HASH) == ("s2", "v9")
+
+    def test_other_content_is_not_ours(self):
+        from xhs_wiki.engines.llmwiki.importer import _committed_source
+        task = _commit_task(new=[self._entry("s1", "v1", "cd" * 32)])
+        assert _committed_source(task, self.HASH) == (None, None)
+
+    def test_ambiguous_match_stops(self):
+        from xhs_wiki.engines.llmwiki.importer import _committed_source
+        task = _commit_task(new=[self._entry("s1", "v1", self.HASH),
+                                 self._entry("s2", "v2", self.HASH)])
+        assert _committed_source(task, self.HASH) == (None, None)
+
+    def test_missing_or_malformed_result_stops(self):
+        from xhs_wiki.engines.llmwiki.importer import _committed_source
+        for task in ({}, {"result": None}, {"result": {"reference": "x"}},
+                     {"result": {"reference": {"completion": []}}}):
+            assert _committed_source(task, self.HASH) == (None, None)

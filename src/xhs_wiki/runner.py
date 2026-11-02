@@ -236,17 +236,12 @@ def default_deps() -> RunnerDeps:
         return make_provider(settings["llm"], key_provider=key_provider)
 
     def _make_engine(settings):
-        # 轻量引擎（markdown）和 LLM Wiki 引擎（llmwiki）。
-        if settings.get("engine") == "llmwiki":
-            from .engines.llmwiki.engine import LlmWikiEngine
-            from pathlib import Path as _Path
-            return LlmWikiEngine(
-                _Path(settings["kb_root"]).expanduser(),
-                config.app_home(), settings)
-        if settings.get("engine") != "markdown":
-            raise ValueError("engine_not_available:" + str(settings.get("engine")))
-        from .engines.markdown.engine import MarkdownEngine
-        return MarkdownEngine(settings["kb_root"], _make_provider(settings))
+        # 引擎选择与守护进程共用工厂；LLM Wiki 不需要 Python 模型对象，
+        # 避免为它初始化未使用的 API 提供方或凭据访问器。
+        from .engines import make_engine
+
+        provider = _make_provider(settings) if settings.get("engine") == "markdown" else None
+        return make_engine(settings, provider, home)
 
     def _key_exists(provider_name):
         # anthropic / openai_compatible 只检查钥匙串里有没有条目，

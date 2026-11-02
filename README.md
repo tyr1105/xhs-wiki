@@ -320,7 +320,7 @@ bash install.sh --from-local .
 ## 首次设置：控制台向导
 
 1. **知识库位置：** 默认 `~/XHS-Wiki`，也可以选其他本机文件夹，但这些位置不能用：`~/Library` 里面（所以 iCloud 里的 Obsidian 库不能直接用；新版 Dropbox、Google Drive、OneDrive 的同步文件夹也在 `~/Library` 下，同样不行）、`~/.claude` 和 `~/.codex` 里面、主目录本身、外接硬盘等磁盘的根目录（里面的子文件夹可以）、程序包（如 `.app`），以及主目录下“文稿”“桌面”“下载”“影片”“音乐”“图片”“公共”这几个文件夹本身。这几个文件夹里面的子文件夹可以选，但后台服务访问“文稿”“桌面”“下载”里的内容时，macOS 可能弹出权限请求，也可能直接拒绝，没有权限时知识库写不进去；最省事的是用默认的 `~/XHS-Wiki`，或在主目录下新建一个文件夹。以后在“重新设置”里换位置时，本工具生成的内容（`索引.md`、`暂缓.md`、`主题/`、`来源/`、`.xhs-wiki/`）会搬到新位置，原文件夹里你自己放的其他文件不会动；新位置必须是空文件夹或还不存在，里面已经有文件时会拒绝，也不能放在原来的知识库文件夹里面。
-2. **引擎：** 先选“轻量引擎（推荐）”；LLM Wiki 所需的额外程序即将提供。
+2. **引擎：** 一般选“轻量引擎（推荐）”。需要图谱和版本管理时，可选 LLM Wiki 引擎（仅 Apple 芯片）；第一次点击会下载后台程序，角标显示进度，下载并检查通过后才能进入下一步。
 3. **整理模型：** 选提供方，填模型名，再点“测试”。Claude Code 和 Anthropic API 会预填建议的模型名；Codex 的模型名可以留空，用 Codex 自己的默认模型。两种命令行方式只检查登录状态；API 方式会真实发一次很小的请求，先问你是否同意产生少量费用。
 4. **扫码登录：** 点击“获取二维码”后，会弹出一个写着 **“登录专用窗口”** 的小窗口。请用手机小红书扫描**控制台里的二维码**，不要提前关闭小窗口；登录成功后窗口会自动关闭，并自动识别主页，不用填写账号编号。
 5. **导入范围：** 建议先选“最近 20 条（推荐，先看效果）”，再点“完成并开始”。这个选择只影响第一次导入，之后每天的新收藏都会处理。选“全部收藏”会把已有收藏全部整理进知识库，控制台会提醒这需要较长时间，并会占用模型额度（调用次数按收藏数量增加）。每次运行最多下载 **100 条**新收藏（默认值，可在“定时设置”的“每次最多新增条数（1–200）”里修改），其中最多 50 条在这一轮整理完，其余由之后的追加运行接着整理；收藏多的话会分几天完成。
@@ -352,7 +352,13 @@ API Key 保存在 **macOS 钥匙串**（系统保存凭据的地方），不写�
 
 **轻量 Markdown，默认选项。** 生成普通的 Markdown 文件，任何文本编辑器都能打开，也可以用 Obsidian 浏览。知识库包含 `索引.md`、`暂缓.md`、`主题/`、`来源/`；来源页保留文字和出处，主题页汇总相关来源（完整目录见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)）。内容不足的笔记（比如只有话题标签，或视频里只有背景音乐）会标为“暂缓”：保留来源页，不并入主题。
 
-**LLM Wiki，进阶选项。** 需要额外安装本项目适配的 LLM Wiki 程序，仅支持 Apple 芯片和 Claude Code / Codex。正式下载渠道**即将提供**，当前不要把普通桌面版当作可直接替代的后台程序。
+**LLM Wiki，进阶选项，已接入向导。** 适合希望在 LLM Wiki 桌面版里浏览图谱、手动编辑和查看版本的人。只支持 Apple 芯片的 Mac，整理前需在本机安装并登录 Claude Code 或 Codex；不能用 API 类提供方。首次选择时自动下载并配置无窗口后台，不需要手改程序路径。也可运行 `xhs-wiki assets install-llmwiki` 预先下载，再用 `xhs-wiki doctor` 检查。
+
+后台来自 [tyr1105/llm-wiki-desktop 的 headless 分支](https://github.com/tyr1105/llm-wiki-desktop/tree/headless)，基于上游 v2.0.6、采用 Apache-2.0。下载的是 [GitHub Release](https://github.com/tyr1105/llm-wiki-desktop/releases/tag/headless-v2.0.6-1) 中的 `llm-wiki-headless-2.0.6-1-aarch64-apple-darwin.tar.gz`，由 GitHub Actions 在干净构建机上构建；用系统 curl 下载，按[清单](src/xhs_wiki/assets_manifest.json)固定的 SHA-256 核对压缩包和解压后的程序本体。包内保留 LICENSE、NOTICE 和 HEADLESS.md。当前开发清单的校验值和大小仍为发布前占位，维护者填写真实 Release 数值后才能用于实际下载；本轮实现没有验证真实后台联调。
+
+**整理出的页面语言跟随 LLM Wiki 桌面版的界面语言**（两者共用 `~/.config/llm-wiki-desktop/` 里的设置）。界面是中文，页面就是中文；没装桌面版时默认是英文。想要中文页面，先装桌面版并把界面语言设为中文。
+
+**自动整理期间要关闭 LLM Wiki 桌面版**，两者共用单实例锁。需要你确认的整理改动会暂停，并在控制台显示“LLM Wiki 有一组整理改动待确认”；等自动整理停止、后台关闭后，在桌面版打开同一个知识库项目，查看差异后接受或拒绝，再关闭桌面版并回到控制台继续。控制台本身不提供审阅按钮。丢失已有来源引用或新增未知引用的候选会自动驳回；删除、覆盖或一次改动至少 10 个已有页面会交给你确认。
 
 ## 视频转文字（本机语音转写）
 
@@ -490,6 +496,12 @@ API Key 保存在 **macOS 钥匙串**（系统保存凭据的地方），不写�
 
 要换提供方、换成 API 方式、改接口地址或密钥、改知识库位置时，点“重新设置”，重新走一遍向导。已整理的内容不会删除；有运行在进行时，要等当前运行结束后再点。改知识库位置时，本工具生成的内容会搬到新位置（新位置要是空文件夹或还不存在），原文件夹里你自己放的其他文件不会动。
 
+### LLM Wiki 下载失败、显示不可用，或要求确认改动，怎么办？
+
+下载失败时，先按卡片上的中文原因检查网络或磁盘，再点同一张卡片重试；支持断点续传，校验失败不会使用坏文件。未下载完成时点击“下一步”只会提示等待，不会保存 LLM Wiki 引擎。Intel Mac 请用轻量引擎；提示缺少命令时，可以先点“下一步”选择本机已经安装的 Claude Code 或 Codex（两者都没有则先安装并登录）；保存提供方后会重新检查，检查通过才会保存引擎并继续；提示桌面版正在运行时，先关闭桌面版再点卡片检查。使用开发分支时，还要确认资源清单的发布占位值已由维护者填写。
+
+出现待确认改动时，先等本轮自动整理停止，再用桌面版打开同一个项目审阅；接受或拒绝后关闭桌面版，回控制台继续，不要同时运行桌面版和自动整理。更多说明见[两种知识库引擎](#两种知识库引擎)。
+
 ### 怎样更换语音模型？
 
 在日常页“语音转写”的“语音识别模型”里选择 Whisper 或 SenseVoice，再点“保存”。缺的模型会自动在后台下载，进度显示在页面顶部；已经下载的另一个模型不会删除。
@@ -523,7 +535,7 @@ bash uninstall.sh
 ## 现状与路线图
 
 - **现在可以用：** 一条命令安装（不需要 Homebrew、git、ffmpeg；国内网络可加 `--mirror cn`）、控制台 5 步向导、每天定时跟进新收藏、本机识别图片文字和转写视频、四种整理模型、轻量 Markdown 引擎、Claude Code 查询 Skill、原件核验后清理。
-- **即将提供：** LLM Wiki 引擎所需程序的正式下载渠道（进阶选项，仅支持 Apple 芯片，整理模型仅支持 Claude Code 和 Codex）。
+- **LLM Wiki 引擎可用（v0.2.0）：** 向导按需下载、校验并配置无窗口后台（仅 Apple 芯片，整理模型仅支持 Claude Code 和 Codex），已在真机上跑通导入、Update Wiki、轻量检查和确认。
 - **目前的限制：** 只支持 macOS 13 或更新版本，Intel 机型和 macOS 13 还没有真机验证（Intel 的自动测试已经通过）；开源版完整跑通过的是导入最近 20 条，几百条以上的大批量导入还没有完整实测过；控制台只有中文界面；带出处的提问目前通过 Claude Code 的查询 Skill 完成，选 Codex 或 API 时，它们只负责整理；知识库里的原帖链接在电脑浏览器里打不开（见[原帖链接打不开？](#原帖链接打不开)）。
 
 每个版本改了什么，见 [CHANGELOG.md](CHANGELOG.md)。
@@ -565,7 +577,7 @@ bash uninstall.sh
 | Whisper large-v3-turbo 的 CTranslate2 转换权重 | [dropbox-dash/faster-whisper-large-v3-turbo](https://huggingface.co/dropbox-dash/faster-whisper-large-v3-turbo)；原始模型 [openai/whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo) | 转换权重与原始模型均为 MIT |
 | SenseVoice int8 权重 | [sherpa-onnx 模型发布资源](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models) | [FunASR Model License v1.1](https://github.com/modelscope/FunASR/blob/main/MODEL_LICENSE)：可以免费使用、修改和分享，须注明来源并保留模型名。本项目不分发权重，由用户的机器从 sherpa-onnx 的发布页下载 |
 | Silero VAD 语音检测权重 | [snakers4/silero-vad](https://github.com/snakers4/silero-vad) | MIT |
-| LLM Wiki，可选引擎的上游 | [StoneLL1/llm-wiki-desktop](https://github.com/StoneLL1/llm-wiki-desktop) | Apache-2.0，见技术设计中的上游说明 |
+| LLM Wiki 无窗口后台，可选引擎 | [tyr1105/llm-wiki-desktop 的 headless 分支](https://github.com/tyr1105/llm-wiki-desktop/tree/headless)，基于 [StoneLL1/llm-wiki-desktop](https://github.com/StoneLL1/llm-wiki-desktop) v2.0.6 | Apache-2.0，见 [第三方声明](THIRD_PARTY_NOTICES.md) |
 | uv，安装时准备环境 | [Astral 官方安装渠道](https://astral.sh/uv/0.12.13/install.sh) | 以所安装发行包的许可为准，本仓库未收录 |
 
 库的许可证不等于模型权重的许可证。上表 Python 库的许可证来自本地已安装版本的声明；模型权重许可证已单独核实。
