@@ -354,7 +354,7 @@ API Key 保存在 **macOS 钥匙串**（系统保存凭据的地方），不写�
 
 **LLM Wiki，进阶选项，已接入向导。** 适合希望在 LLM Wiki 桌面版里浏览图谱、手动编辑和查看版本的人。只支持 Apple 芯片的 Mac，整理前需在本机安装并登录 Claude Code 或 Codex；不能用 API 类提供方。首次选择时自动下载并配置无窗口后台，不需要手改程序路径。也可运行 `xhs-wiki assets install-llmwiki` 预先下载，再用 `xhs-wiki doctor` 检查。
 
-后台来自 [tyr1105/llm-wiki-desktop 的 headless 分支](https://github.com/tyr1105/llm-wiki-desktop/tree/headless)，基于上游 v2.0.6、采用 Apache-2.0。下载的是 [GitHub Release](https://github.com/tyr1105/llm-wiki-desktop/releases/tag/headless-v2.0.6-1) 中的 `llm-wiki-headless-2.0.6-1-aarch64-apple-darwin.tar.gz`，由 GitHub Actions 在干净构建机上构建；用系统 curl 下载，按[清单](src/xhs_wiki/assets_manifest.json)固定的 SHA-256 核对压缩包和解压后的程序本体。包内保留 LICENSE、NOTICE 和 HEADLESS.md。当前开发清单的校验值和大小仍为发布前占位，维护者填写真实 Release 数值后才能用于实际下载；本轮实现没有验证真实后台联调。
+后台来自 [tyr1105/llm-wiki-desktop 的 headless 分支](https://github.com/tyr1105/llm-wiki-desktop/tree/headless)，基于上游 v2.0.6、采用 Apache-2.0。下载的是 [GitHub Release](https://github.com/tyr1105/llm-wiki-desktop/releases/tag/headless-v2.0.6-1) 中的 `llm-wiki-headless-2.0.6-1-aarch64-apple-darwin.tar.gz`，由 GitHub Actions 在干净构建机上构建；用系统 curl 下载，按[清单](src/xhs_wiki/assets_manifest.json)固定的 SHA-256 核对压缩包和解压后的程序本体。包内保留 LICENSE、NOTICE 和 HEADLESS.md。清单固定的是这个附件的真实校验值和大小；已在 Apple 芯片的 Mac 上用虚构笔记跑通下载、导入、Update Wiki、轻量检查和确认的全流程。
 
 **整理出的页面语言跟随 LLM Wiki 桌面版的界面语言**（两者共用 `~/.config/llm-wiki-desktop/` 里的设置）。界面是中文，页面就是中文；没装桌面版时默认是英文。想要中文页面，先装桌面版并把界面语言设为中文。
 
@@ -498,7 +498,7 @@ API Key 保存在 **macOS 钥匙串**（系统保存凭据的地方），不写�
 
 ### LLM Wiki 下载失败、显示不可用，或要求确认改动，怎么办？
 
-下载失败时，先按卡片上的中文原因检查网络或磁盘，再点同一张卡片重试；支持断点续传，校验失败不会使用坏文件。未下载完成时点击“下一步”只会提示等待，不会保存 LLM Wiki 引擎。Intel Mac 请用轻量引擎；提示缺少命令时，可以先点“下一步”选择本机已经安装的 Claude Code 或 Codex（两者都没有则先安装并登录）；保存提供方后会重新检查，检查通过才会保存引擎并继续；提示桌面版正在运行时，先关闭桌面版再点卡片检查。使用开发分支时，还要确认资源清单的发布占位值已由维护者填写。
+下载失败时，先按卡片上的中文原因检查网络或磁盘，再点同一张卡片重试；支持断点续传，校验失败不会使用坏文件。未下载完成时点击“下一步”只会提示等待，不会保存 LLM Wiki 引擎。Intel Mac 请用轻量引擎；提示缺少命令时，可以先点“下一步”选择本机已经安装的 Claude Code 或 Codex（两者都没有则先安装并登录）；保存提供方后会重新检查，检查通过才会保存引擎并继续；提示桌面版正在运行时，先关闭桌面版再点卡片检查。
 
 出现待确认改动时，先等本轮自动整理停止，再用桌面版打开同一个项目审阅；接受或拒绝后关闭桌面版，回控制台继续，不要同时运行桌面版和自动整理。更多说明见[两种知识库引擎](#两种知识库引擎)。
 

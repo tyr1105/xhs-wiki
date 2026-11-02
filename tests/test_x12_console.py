@@ -6,6 +6,7 @@
 说明文档同时检查，防止页面可选而安装文档仍引导手改路径。
 """
 
+import json
 import re
 import shutil
 import subprocess
@@ -129,18 +130,26 @@ def test_llmwiki_and_download_errors_have_chinese_labels(page):
 
 
 def test_readmes_describe_release_integrity_and_pending_review():
-    """两种语言都说明来源、双重校验和审阅边界，同时如实保留发布前占位限制。"""
+    """两种语言都说明来源、双重校验和审阅边界，并指向清单里实际下载的那个 Release。
+
+    发布前的"清单还是占位值"说法不能留在文档里；Release 标签从清单读取，
+    以后换新版后台时，忘了同步 README 会在这里报错。
+    """
+    manifest = json.loads(
+        (ROOT / "src/xhs_wiki/assets_manifest.json").read_text(encoding="utf-8"))
+    release_tag = "releases/tag/headless-v" + manifest["llmwiki"]["version"]
     for name in ("README.md", "README_EN.md"):
         text = (ROOT / name).read_text(encoding="utf-8")
         for expected in ("tree/headless", "GitHub Actions", "SHA-256",
-                         "install-llmwiki", "v2.0.6", "Codex", "Apache-2.0"):
-            assert expected in text
+                         "install-llmwiki", "v2.0.6", "Codex", "Apache-2.0",
+                         release_tag):
+            assert expected in text, (name, expected)
     chinese = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "控制台本身不提供审阅按钮" in chinese
-    assert "发布前占位" in chinese
+    assert "发布前占位" not in chinese and "发布占位" not in chinese
     english = (ROOT / "README_EN.md").read_text(encoding="utf-8")
     assert "console has no review buttons" in english
-    assert "release placeholders" in english
+    assert "release placeholder" not in english
 
 
 def test_missing_default_agent_can_choose_provider_before_health_passes(page):
