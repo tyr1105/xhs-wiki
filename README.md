@@ -354,9 +354,9 @@ API Key 保存在 **macOS 钥匙串**（系统保存凭据的地方），不写�
 
 **LLM Wiki，进阶选项，已接入向导。** 适合希望在 LLM Wiki 桌面版里浏览图谱、手动编辑和查看版本的人。只支持 Apple 芯片的 Mac，整理前需在本机安装并登录 Claude Code 或 Codex；不能用 API 类提供方。首次选择时自动下载并配置无窗口后台，不需要手改程序路径。也可运行 `xhs-wiki assets install-llmwiki` 预先下载，再用 `xhs-wiki doctor` 检查。
 
-后台来自 [tyr1105/llm-wiki-desktop 的 headless 分支](https://github.com/tyr1105/llm-wiki-desktop/tree/headless)，基于上游 v2.0.6、采用 Apache-2.0。下载的是 [GitHub Release](https://github.com/tyr1105/llm-wiki-desktop/releases/tag/headless-v2.0.6-1) 中的 `llm-wiki-headless-2.0.6-1-aarch64-apple-darwin.tar.gz`，由 GitHub Actions 在干净构建机上构建；用系统 curl 下载，按[清单](src/xhs_wiki/assets_manifest.json)固定的 SHA-256 核对压缩包和解压后的程序本体。包内保留 LICENSE、NOTICE 和 HEADLESS.md。清单固定的是这个附件的真实校验值和大小；已在 Apple 芯片的 Mac 上用虚构笔记跑通下载、导入、Update Wiki、轻量检查和确认的全流程。
+后台来自 [tyr1105/llm-wiki-desktop 的 headless 分支](https://github.com/tyr1105/llm-wiki-desktop/tree/headless)，基于上游 v2.0.6、采用 Apache-2.0。下载的是 [GitHub Release](https://github.com/tyr1105/llm-wiki-desktop/releases/tag/headless-v2.0.6-2) 中的 `llm-wiki-headless-2.0.6-2-aarch64-apple-darwin.tar.gz`，由 GitHub Actions 在干净构建机上构建；用系统 curl 下载，按[清单](src/xhs_wiki/assets_manifest.json)固定的 SHA-256 核对压缩包和解压后的程序本体。包内保留 LICENSE、NOTICE 和 HEADLESS.md。清单固定的是这个附件的真实校验值和大小；已在 Apple 芯片的 Mac 上用虚构笔记跑通下载、导入、Update Wiki、轻量检查和确认的全流程。
 
-**整理出的页面语言跟随 LLM Wiki 桌面版的界面语言**（两者共用 `~/.config/llm-wiki-desktop/` 里的设置）。界面是中文，页面就是中文；没装桌面版时默认是英文。想要中文页面，先装桌面版并把界面语言设为中文。
+**整理出的页面固定用简体中文写**，和 LLM Wiki 桌面版的界面语言无关，没装桌面版也一样。xhs-wiki 启动后台时用环境变量 `LLM_WIKI_CONTENT_LANGUAGE=zh-CN` 指定页面语言（后台 2.0.6-2 起支持），不改桌面版的任何设置。
 
 **自动整理期间要关闭 LLM Wiki 桌面版**，两者共用单实例锁。需要你确认的整理改动会暂停，并在控制台显示“LLM Wiki 有一组整理改动待确认”；等自动整理停止、后台关闭后，在桌面版打开同一个知识库项目，查看差异后接受或拒绝，再关闭桌面版并回到控制台继续。控制台本身不提供审阅按钮。丢失已有来源引用或新增未知引用的候选会自动驳回；删除、覆盖或一次改动至少 10 个已有页面会交给你确认。
 
@@ -535,7 +535,7 @@ bash uninstall.sh
 ## 现状与路线图
 
 - **现在可以用：** 一条命令安装（不需要 Homebrew、git、ffmpeg；国内网络可加 `--mirror cn`）、控制台 5 步向导、每天定时跟进新收藏、本机识别图片文字和转写视频、四种整理模型、轻量 Markdown 引擎、Claude Code 查询 Skill、原件核验后清理。
-- **LLM Wiki 引擎可用（v0.2.0）：** 向导按需下载、校验并配置无窗口后台（仅 Apple 芯片，整理模型仅支持 Claude Code 和 Codex），已在真机上跑通导入、Update Wiki、轻量检查和确认。
+- **LLM Wiki 引擎可用（v0.2.0 起）：** 向导按需下载、校验并配置无窗口后台（仅 Apple 芯片，整理模型仅支持 Claude Code 和 Codex），已在真机上跑通导入、Update Wiki、轻量检查和确认；v0.2.1 起整理出的页面固定用简体中文。
 - **目前的限制：** 只支持 macOS 13 或更新版本，Intel 机型和 macOS 13 还没有真机验证（Intel 的自动测试已经通过）；开源版完整跑通过的是导入最近 20 条，几百条以上的大批量导入还没有完整实测过；控制台只有中文界面；带出处的提问目前通过 Claude Code 的查询 Skill 完成，选 Codex 或 API 时，它们只负责整理；知识库里的原帖链接在电脑浏览器里打不开（见[原帖链接打不开？](#原帖链接打不开)）。
 
 每个版本改了什么，见 [CHANGELOG.md](CHANGELOG.md)。

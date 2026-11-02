@@ -2,6 +2,16 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.1] - 2026-11-02
+
+### 变更
+- LLM Wiki 引擎整理出的页面固定用简体中文写，不再跟随 LLM Wiki 桌面版的界面语言；没装桌面版、或桌面版是英文界面，也会得到中文页面。xhs-wiki 启动后台时传 `LLM_WIKI_CONTENT_LANGUAGE=zh-CN`，不改桌面版的设置。
+
+### 说明
+- 后台程序换成 [tyr1105/llm-wiki-desktop](https://github.com/tyr1105/llm-wiki-desktop) 的 `headless-v2.0.6-2`（新增上面这个环境变量），由 GitHub Actions 构建，附件 SHA-256 `0d04228f53e915ff6b8e425695da8bbb9b6aa31c85caff49fd3d0af475ba7c81`。
+- 已经装过 v0.2.0 后台的：升级后服务会自动下载新版后台（约 18 MB），下载完成前自动整理会等待。旧版在 `~/Library/Application Support/xhs-wiki/vendor/llm-wiki-headless-2.0.6-1-aarch64-apple-darwin/`，不再使用，可以手动删除。
+- 升级前已经生成的英文页面不会被自动翻译；之后的整理按中文写，已有的英文页面被更新时可能出现中英混排。
+
 ## [0.2.0] - 2026-11-02
 
 ### 新增

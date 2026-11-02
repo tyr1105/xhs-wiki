@@ -152,6 +152,24 @@ def test_readmes_describe_release_integrity_and_pending_review():
     assert "release placeholder" not in english
 
 
+def test_docs_say_llmwiki_pages_are_always_simplified_chinese():
+    """v0.2.1 起页面固定用简体中文：文档不能再说"跟随桌面版界面语言"。
+
+    README 两种语言和技术设计都要写明固定中文和对应的环境变量，避免文档
+    和 backend.py 实际传给后台的值对不上。
+    """
+    chinese = (ROOT / "README.md").read_text(encoding="utf-8")
+    english = (ROOT / "README_EN.md").read_text(encoding="utf-8")
+    design = (ROOT / "docs/architecture.md").read_text(encoding="utf-8")
+    assert "整理出的页面固定用简体中文写" in chinese
+    assert "页面语言跟随" not in chinese
+    assert "always written in Simplified Chinese" in english
+    assert "follow the interface language" not in english
+    assert "页面语言跟随桌面版的界面语言" not in design
+    for text in (chinese, english, design):
+        assert "LLM_WIKI_CONTENT_LANGUAGE=zh-CN" in text
+
+
 def test_missing_default_agent_can_choose_provider_before_health_passes(page):
     """缺少默认代理仅放行选择提供方，后续保存必须等引擎健康通过。"""
     next_step = function(page, "wizNext", "saveLlm")

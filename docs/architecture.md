@@ -166,7 +166,7 @@ KB_ROOT/
 
 ### 6.2 LLM Wiki 引擎 `engines/llmwiki/`（进阶）
 
-> **状态：v0.2.0 起可用。** 仅支持 Apple 芯片（包含 Rosetta 环境）。资源清单固定为 Release `headless-v2.0.6-1` 的附件与程序本体 SHA-256；2026-11-02 在真机上用虚构笔记跑通两轮：导入 → Update Wiki → 轻量检查 → 确认，第二轮更新已有主题页时旧来源引用全部保留。
+> **状态：v0.2.0 起可用。** 仅支持 Apple 芯片（包含 Rosetta 环境）。资源清单固定为 Release `headless-v2.0.6-2` 的附件与程序本体 SHA-256（v0.2.1 起；v0.2.0 用的是 `headless-v2.0.6-1`）；2026-11-02 在真机上用虚构笔记跑通两轮：导入 → Update Wiki → 轻量检查 → 确认，第二轮更新已有主题页时旧来源引用全部保留。
 
 - 后台来自 [tyr1105/llm-wiki-desktop 的 headless 分支](https://github.com/tyr1105/llm-wiki-desktop/tree/headless)，基于 StoneLL1/llm-wiki-desktop v2.0.6（Apache-2.0），增加无窗口 `--serve-api` 接口和长上下文控制；GitHub Actions 在干净构建机上构建 Apple 芯片版本。许可证与改动见 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
 - 只有已选择该引擎、或向导刚请求下载时，后台资源线程才准备 `llmwiki`；轻量用户的该项为 `not_needed`，不影响“资源全部就绪”。第一次点卡片返回 202 并显示下载进度，不保存引擎；程序通过固定 SHA-256 校验后，向导自动再做一次健康检查，检查完成在 `finally` 里关闭后台，健康才保存选择。
@@ -177,7 +177,7 @@ KB_ROOT/
 - 真机联调确认的后台行为：
   - 导入条目本身不带来源编号；提交任务结果的 `result.reference.completion.newSources`（以及 `updatedSources`）列出 `sourceId`、`versionId`、`wikiPath`、`contentHash`，`contentHash` 就是导入文件的 SHA-256，适配层按它认出自己这一条，再用 `GET /sources` 核对。来源页落在 `wiki/sources/local/<文件名>.md`，原文在 `raw/sources/<sourceId>/<versionId>/`。
   - 后台不往知识库的 `main` 分支提交：每次整理的输入、确认前和确认后快照存为 `refs/llm-wiki/operations/<任务编号>/{baseline,before,planned,after}`，改动直接写在工作区，所以 `git status` 显示未提交改动是正常状态，不影响下一轮。
-  - 整理用的语言只取 LLM Wiki 全局设置里的界面语言（`~/.config/llm-wiki-desktop/settings.json` 的 `language`，默认 `en`），知识库没有单独的语言设置。所以页面语言跟随桌面版的界面语言，没装桌面版时是英文。
+  - 后台默认按 LLM Wiki 全局设置里的界面语言写页面（`~/.config/llm-wiki-desktop/settings.json` 的 `language`，默认 `en`），知识库没有单独的语言设置。后台 2.0.6-2 起支持环境变量 `LLM_WIKI_CONTENT_LANGUAGE`（只认 `zh-CN` 和 `en`，有效时优先于界面语言，决定规划、逐页生成和 `wiki/log.md` 摘要的语言）。`backend.py` 启动后台时固定传 `LLM_WIKI_CONTENT_LANGUAGE=zh-CN`，子进程环境从零构造、不继承用户环境里的同名变量，所以页面固定是简体中文，与桌面版界面语言无关，也不改桌面版的设置。
   - 无窗口模式仍会在菜单栏放一个 LLM Wiki 图标（上游行为）。
 - 整理模型只支持已在本机登录的 Claude Code 或 Codex（由 LLM Wiki 后台调用）；提供方保存和向导结束均校验组合。自动整理期间必须关闭桌面版；待用户审阅时暂停整理，用户等后台关闭后在桌面版打开同一项目接受或拒绝，再关闭桌面版并继续。
 
