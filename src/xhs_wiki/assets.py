@@ -2,7 +2,7 @@
 """assets.py —— 安装资源的下载、校验和落地。
 
 这个文件做什么：安装脚本（install.sh）通过命令行 ``xhs-wiki assets …``
-调用这里的三类操作：
+调用这里的四类操作：
 1. ``install_xhs_downloader``：下载 XHS-Downloader 压缩包 → sha256 核对 →
    解压到 ``APP_HOME/vendor/`` → 用 uv 把它自己的依赖装进 APP_HOME/venv；
 2. ``install_model``：下载语音模型（whisper 逐个文件下载；sensevoice 是
@@ -10,6 +10,8 @@
    sha256 / 大小核对；
 3. ``verify_model``：检查模型文件是否齐全且未损坏（供 doctor / 安装脚本
    重复执行时跳过重复下载用）。
+4. ``install_llmwiki``：按需下载 LLM Wiki 无窗口后台，核对压缩包与
+   程序本体后整体替换；不启动后台、不安装桌面版。
 
 在整体里的位置：docs/architecture.md §13 安装流程的 Python 一侧；被
 cli.py（assets 子命令）调用，自己只依赖标准库和 config.py。
@@ -75,6 +77,12 @@ CURL_POLL_SECONDS = 0.5
 
 # 支持的语音模型名单（与 parse/asr.py 的 ModelName 保持一致）。
 MODEL_NAMES = ("whisper", "sensevoice")
+
+# 后台本体通常较大；向导每几秒轮询时只检查文件属性，内容没有改变就
+# 复用上次指纹结果。缓存键包含绝对路径，值还绑定清单指纹，不能把
+# 另一个安装目录或另一个发布版本的就绪结论混用。
+_LLMWIKI_VERIFY_CACHE: dict[Path, tuple[tuple, bool]] = {}
+_LLMWIKI_VERIFY_LOCK = threading.Lock()
 
 # 这些包包含需要编译的代码，只允许使用预先编译好的安装包（wheel）。
 # 让 uv 按本机系统选择兼容版本，避免 Intel 或较旧 macOS 被迫源码编译。
@@ -648,6 +656,169 @@ def model_ready(name: str, app_home: Path) -> bool:
     return ok
 
 
+def llmwiki_supported() -> bool:
+    """判断是否为 Apple 芯片的 Mac，包含使用 Rosetta 的 Python。
+
+    Rosetta 是让 Intel 程序在 Apple 芯片上运行的兼容层；此时 uname
+    会显示 x86_64，所以再询问内核的 arm64 能力。检测命令只读硬件信息，
+    最多等待五秒；失败、未知机器类型和非 macOS 平台都按不支持处理。
+    """
+    try:
+        machine = os.uname()
+        if machine.sysname != "Darwin":
+            return False
+        if machine.machine == "arm64":
+            return True
+        if machine.machine != "x86_64":
+            return False
+        result = subprocess.run(
+            ["/usr/sbin/sysctl", "-n", "hw.optional.arm64"],
+            capture_output=True, text=True, timeout=5, check=False)
+        return result.returncode == 0 and result.stdout.strip() == "1"
+    except (OSError, subprocess.SubprocessError, AttributeError):
+        return False
+
+
+def llmwiki_binary_path(app_home: Path) -> Path:
+    """从随包清单推导本体的绝对路径，供下载、状态和自动配置共同使用。"""
+    entry = load_manifest()["llmwiki"]
+    return (Path(app_home).resolve() / "vendor" / entry["extract_dir"]
+            / entry["binary"])
+
+
+def llmwiki_ready(app_home: Path) -> bool:
+    """只核对普通程序文件和固定指纹，不执行程序、不触发下载。
+
+    文件大小、修改时间或清单指纹改变才重算 SHA-256，另核对文件编号
+    和属性变更时间，避免整体替换后沿用旧缓存。符号链接不算已安装
+    本体；读文件期间属性变了也不缓存为就绪，下次检查再重新核对。
+    """
+    entry = load_manifest()["llmwiki"]
+    binary = llmwiki_binary_path(app_home)
+    try:
+        if binary.is_symlink() or not binary.is_file():
+            with _LLMWIKI_VERIFY_LOCK:
+                _LLMWIKI_VERIFY_CACHE.pop(binary, None)
+            return False
+        identity = _llmwiki_file_identity(binary, entry["binary_sha256"])
+        with _LLMWIKI_VERIFY_LOCK:
+            cached = _LLMWIKI_VERIFY_CACHE.get(binary)
+        if cached is not None and cached[0] == identity:
+            return cached[1]
+        ready = _sha256_of(binary) == entry["binary_sha256"]
+        if binary.is_symlink() or _llmwiki_file_identity(binary, entry["binary_sha256"]) != identity:
+            with _LLMWIKI_VERIFY_LOCK:
+                _LLMWIKI_VERIFY_CACHE.pop(binary, None)
+            return False
+        with _LLMWIKI_VERIFY_LOCK:
+            _LLMWIKI_VERIFY_CACHE[binary] = (identity, ready)
+        return ready
+    except OSError:
+        with _LLMWIKI_VERIFY_LOCK:
+            _LLMWIKI_VERIFY_CACHE.pop(binary, None)
+        return False
+
+
+def _llmwiki_file_identity(binary: Path, expected_sha256: str) -> tuple:
+    """把文件的轻量属性和清单指纹合为缓存身份，不读取文件内容。"""
+    info = binary.stat()
+    return (info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_ino,
+            expected_sha256)
+
+
+def _replace_llmwiki_component(component: Path, destination: Path) -> None:
+    """完整目录一次改名落地，失败先还原；还原也失败时保留唯一旧备份。
+
+    备份放在解压临时目录之外。这样双重磁盘故障时，外层清理新文件
+    不会连旧目录一起删掉；留下的 .llmwiki-previous-* 只保存完整旧目录，
+    不会被 llmwiki_ready 当作正式安装，也不会被下一次下载自动删除。
+    """
+    backup_root = None
+    backup = None
+    installed = False
+    try:
+        if destination.exists() or destination.is_symlink():
+            backup_root = Path(tempfile.mkdtemp(prefix=".llmwiki-previous-", dir=destination.parent))
+            backup = backup_root / "previous"
+            os.replace(destination, backup)
+        try:
+            os.replace(component, destination)
+            installed = True
+        except BaseException:
+            # 包括中断在内，只有还原成功才允许清除备份容器；还原抛错时
+            # backup 仍在，finally 必须保留它供人工恢复。
+            if backup is not None:
+                os.replace(backup, destination)
+            raise
+    finally:
+        if backup_root is not None and (installed or not (backup.exists() or backup.is_symlink())):
+            shutil.rmtree(backup_root)
+
+
+def install_llmwiki(app_home: Path, *, progress=None, downloader=None,
+                   http=None) -> Path:
+    """下载并校验无窗口后台，成功后整体安装到 vendor 下的版本目录。
+
+    fetch 仍负责系统 curl、断点续传与一次校验重下；解压只发生在同一
+    磁盘的私有临时目录。压缩包与本体都通过固定 SHA-256 校验后才把
+    完整目录改名到正式位置，失败不留下半成品，也不破坏旧的完整安装。
+    这里只返回绝对路径，设置由守护进程或 CLI 调用方原子写回。
+    """
+    if not llmwiki_supported():
+        raise ValueError("llmwiki_unsupported_platform")
+    app_home = Path(app_home).resolve()
+    entry = load_manifest()["llmwiki"]
+    if llmwiki_ready(app_home):
+        # 重复安装不重复下载，同时修复误改的可执行权限。
+        binary = llmwiki_binary_path(app_home)
+        try:
+            binary.chmod(0o755)
+        except OSError:
+            raise ValueError("assets_error") from None
+        return binary
+    vendor = app_home / "vendor"
+    try:
+        app_home.mkdir(parents=True, exist_ok=True, mode=0o700)
+        vendor.mkdir(exist_ok=True, mode=0o700)
+    except OSError:
+        raise ValueError("assets_error") from None
+    archive = vendor / (entry["extract_dir"] + ".tar.gz")
+    fetch(entry["url"], archive, sha256=entry["sha256"], size=entry["size"],
+          http=http, progress=progress, downloader=downloader)
+
+    # 临时目录与目标相邻，确保最后的 os.replace 不会跨磁盘变成复制。
+    try:
+        with tempfile.TemporaryDirectory(prefix=".llmwiki-install-", dir=vendor) as temporary:
+            staging = Path(temporary)
+            _extract_archive(archive, staging)
+            component = staging / entry["extract_dir"]
+            if component.is_symlink() or not component.is_dir():
+                raise ValueError("assets_extract_dir_missing")
+            binary = component / entry["binary"]
+            if binary.is_symlink() or not binary.is_file():
+                raise ValueError("llmwiki_binary_missing")
+            if _sha256_of(binary) != entry["binary_sha256"]:
+                raise ValueError("assets_sha256_mismatch")
+
+            # 压缩包自带的权限不直接沿用：资料仅本人可读，只有本体可执行。
+            component.chmod(0o700)
+            for item in component.rglob("*"):
+                if not item.is_symlink():
+                    item.chmod(0o700 if item.is_dir() else 0o600)
+            binary.chmod(0o755)
+            destination = vendor / entry["extract_dir"]
+            _replace_llmwiki_component(component, destination)
+    except OSError:
+        raise ValueError("assets_error") from None
+    finally:
+        # 网络失败留给 fetch 保留断点；完整包已经拿到后的失败则清理包和展开目录。
+        try:
+            archive.unlink(missing_ok=True)
+        except OSError:
+            raise ValueError("assets_error") from None
+    return llmwiki_binary_path(app_home)
+
+
 def asset_total_bytes(name: str) -> "int | None":
     """按清单估算一类资源下载后占用的字节数（控制台进度条显示用）。
 
@@ -662,6 +833,8 @@ def asset_total_bytes(name: str) -> "int | None":
     entry = manifest.get(name)
     if not entry:
         return None
+    if name == "llmwiki":
+        return entry["size"]
     total = 0
     for _sha256, size in entry.get("files", {}).values():
         total += size

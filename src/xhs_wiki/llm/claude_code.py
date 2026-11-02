@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -74,6 +75,41 @@ def find_claude(explicit_path: str | None = None) -> str | None:
     return None
 
 
+def supported_print_flags(exe: str | None, *, runner=None, env=None, cwd=None) -> frozenset[str]:
+    """一次读取帮助，分别判断打印模式的两个隔离参数是否受支持。
+
+    --safe-mode 会屏蔽个人的说明文件、Skill 和插件；旧版未必支持，
+    --no-session-persistence 避免整理内容写入 CLI 会话历史。两者独立
+    判断，只有帮助文本明确列出完整参数名时才启用。runner、环境及
+    工作目录可注入，不调用模型。超时、失败或输出异常视为均不支持。
+    本函数不缓存，由调用方按实例或脚本生成周期缓存结果。
+    """
+
+    if exe is None:
+        return frozenset()
+    try:
+        result = (runner or default_runner)(
+            [exe, "--help"], env=build_env() if env is None else env,
+            input="", timeout_s=15,
+            cwd=str(config.llm_work_dir()) if cwd is None else str(cwd),
+        )
+        if result.timed_out or result.returncode != 0:
+            return frozenset()
+        # 按完整名称识别，防止 --safe-mode-extra 之类相似参数误报支持。
+        return frozenset(flag for flag in ("--safe-mode", "--no-session-persistence")
+                         if re.search(r"(?<![\w-])" + re.escape(flag) + r"(?![\w-])",
+                                      result.stdout))
+    except Exception:
+        # 帮助探测不承载业务请求；检测失败不应阻止兼容旧版 CLI。
+        return frozenset()
+
+
+def supports_safe_mode(exe: str | None, *, runner=None, env=None, cwd=None) -> bool:
+    """保持轻量引擎既有布尔接口，复用包装脚本相同的帮助解析逻辑。"""
+
+    return "--safe-mode" in supported_print_flags(exe, runner=runner, env=env, cwd=cwd)
+
+
 # 判断"未登录"的特征字符串：Claude Code 未登录时输出里会出现的片段。
 _NOT_LOGGED_IN_HINTS = ("not logged in", "未登录", "auth login")
 
@@ -122,24 +158,8 @@ class ClaudeCodeProvider:
 
         if self._safe_mode is not None:
             return self._safe_mode
-        exe = self._exe
-        supported = False
-        if exe is not None:
-            try:
-                result = self._runner(
-                    [exe, "--help"],
-                    env=build_env(),
-                    input="",
-                    timeout_s=15,
-                    cwd=str(config.llm_work_dir()),
-                )
-                if not result.timed_out and result.returncode == 0:
-                    supported = "--safe-mode" in result.stdout
-            except Exception:
-                # 启动失败、输出读不出来等一切异常都当作不支持
-                supported = False
-        self._safe_mode = supported
-        return supported
+        self._safe_mode = supports_safe_mode(self._exe, runner=self._runner)
+        return self._safe_mode
 
     def complete(
         self,

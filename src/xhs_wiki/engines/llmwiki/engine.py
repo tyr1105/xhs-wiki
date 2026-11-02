@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import time
 import uuid
@@ -77,7 +78,7 @@ class LlmWikiEngine:
 
     def __init__(self, project_root, app_home, settings, *,
                  backend=None, client=None, sleep=None, clock=None,
-                 port=None) -> None:
+                 port=None, wrapper_installer=None) -> None:
         self.project_root = Path(project_root).expanduser()
         self.app_home = Path(app_home).expanduser()
         self.app_home.mkdir(parents=True, exist_ok=True)
@@ -92,6 +93,9 @@ class LlmWikiEngine:
         self._sleep = sleep or time.sleep
         self._clock = clock or time.monotonic
         self._port = int(port or DEFAULT_API_PORT)
+        # 脚本安装器可注入，测试不探测真实 CLI；本实例只生成一次包装脚本。
+        self._wrapper_installer = wrapper_installer or agents_module.install_wrappers
+        self._wrappers_ready = False
         self._journal: Journal | None = None
         self._project_id: str | None = None
         # 缓存满（429 API_RETRY_CACHE_FULL）时 ingest 阶段的重启次数。
@@ -120,6 +124,10 @@ class LlmWikiEngine:
                     self._port, agent_bin_dir=self._agent_bin_dir(),
                     sleep=self._sleep, clock=self._clock)
                 self._own_backend = True
+            # 后台启动前必须已有包装脚本、模型配置和项目目录，否则它会
+            # 直接找到未恢复 HOME 的原始 CLI，或因项目目录缺失启动失败。
+            self._prepare_agents()
+            scaffold(self.project_root)
             if not self._backend.is_running():
                 self._backend.start()  # 桌面版占锁 → EngineUnavailable
             self._client = self._backend.client()
@@ -153,15 +161,34 @@ class LlmWikiEngine:
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
+    def _prepare_agents(self) -> None:
+        """启动前生成当前提供方的包装脚本，缺 CLI 时只给稳定错误代码。"""
+
+        if not self._wrappers_ready:
+            provider = (self.settings.get("llm") or {}).get("provider", "claude_code")
+            try:
+                self._wrapper_installer(provider=provider, bin_dir=self._agent_bin_dir())
+            except ValueError as error:
+                if str(error) in {"claude_executable_not_found", "codex_executable_not_found"}:
+                    raise EngineUnavailable("llmwiki_agent_missing") from None
+                raise
+            except OSError:
+                raise EngineUnavailable("llmwiki_wrapper_failed") from None
+            self._wrappers_ready = True
+        self._write_model_config()
+
     def _write_model_config(self) -> None:
-        """把设置里选的整理模型写进 model.conf（后台每次调用现读）。"""
+        """把模型原子写入配置；写失败就停，不能悄悄改用默认模型。"""
 
         llm = self.settings.get("llm") or {}
         model = llm.get("model") or ""
+        # 与 Codex 提供方兼容旧向导留下的 default 哨兵值。
+        if llm.get("provider") == "codex" and model == "default":
+            model = ""
         try:
             agents_module.write_model_config(model, self._agent_bin_dir())
         except OSError:
-            pass  # 写不进配置不该让引擎瘫痪；后台会用默认模型
+            raise EngineUnavailable("llmwiki_wrapper_failed") from None
 
     def close(self) -> None:
         """一次运行结束：安全停掉我们启动的后台，关掉请求日志。"""
@@ -191,8 +218,13 @@ class LlmWikiEngine:
             return False, error.code
         except ApiError as error:
             return False, f"llmwiki_api_{error.code}"
-        except (ValueError, OSError) as error:
-            return False, str(error)
+        except ValueError as error:
+            # 已知失败只携带短代码；解析异常原文可能含路径或用户内容。
+            code = str(error)
+            return False, code if re.fullmatch(r"[a-z][a-z0-9_]*", code) else "engine_unavailable"
+        except OSError:
+            # 文件系统异常会带完整路径，不把它发往状态接口和控制台。
+            return False, "engine_unavailable"
 
     def ingest(self, packages: list[Package]) -> list[IngestResult]:
         """逐条导入解析包；engine_ref 是 {"source_id","version_id"}。"""

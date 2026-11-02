@@ -30,6 +30,7 @@ import shutil
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlencode
@@ -748,18 +749,17 @@ class TestSetupEngineAndLlm(DaemonTestBase):
         self.assertEqual(status, 400)
         self.assertEqual(data.get("error"), "engine_invalid")
 
-    def test_engine_llmwiki_reports_not_available(self):
-        # LLM Wiki 引擎尚未提供：现在选它应该返回"尚未提供"且不保存设置。
-        def reject(settings):
-            if settings.get("engine") != "markdown":
-                raise ValueError("engine_not_available:llmwiki")
-            return FakeEngine()
-
-        self.server.make_engine = reject
-        status, data = self.post("/api/setup/engine", body={"engine": "llmwiki"})
+    def test_engine_llmwiki_unhealthy_preserves_reason(self):
+        # X12 已接入后台：用假的就绪资源和不健康引擎核对原因透传，
+        # 原先“失败时不保存”的约束保留，且不启动或探测真实后台。
+        self.server.make_engine = lambda settings: FakeEngine(
+            ok=False, reason="llmwiki_desktop_running")
+        with patch("xhs_wiki.assets.llmwiki_supported", return_value=True), \
+                patch("xhs_wiki.assets.llmwiki_ready", return_value=True):
+            status, data = self.post("/api/setup/engine", body={"engine": "llmwiki"})
         self.assertEqual(status, 400)
         self.assertEqual(data.get("error"), "engine_unavailable")
-        self.assertIn("尚未提供", data.get("reason", ""))
+        self.assertEqual(data.get("reason"), "llmwiki_desktop_running")
         self.assertEqual(self.store.load_settings()["engine"], "markdown")
 
     def test_engine_markdown_saved_when_healthy(self):

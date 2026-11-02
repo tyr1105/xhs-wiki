@@ -114,6 +114,7 @@ class Backend:
         agent_bin_dir,
         spawn=None,
         clock=None,
+        sleep=None,
         ps=None,
     ) -> None:
         self._binary = Path(binary)
@@ -123,6 +124,8 @@ class Backend:
         self._agent_bin_dir = Path(agent_bin_dir)
         self._spawn = spawn or _default_spawn
         self._clock = clock or time.monotonic
+        # 与引擎的可注入等待函数一致，测试无需真实等待。
+        self._sleep = sleep or time.sleep
         self._ps = ps or _default_ps
         self._process: subprocess.Popen | None = None
         self._token: str | None = None
@@ -227,12 +230,12 @@ class Backend:
                 status, payload = api.request("GET", "/health", timeout=HEALTH_TIMEOUT_S)
             except ApiError:
                 # 后台还没开始监听，属于正常启动过程，继续等。
-                time.sleep(0.2)
+                self._sleep(0.2)
                 continue
             data = payload.get("data", {}) if isinstance(payload, dict) else {}
             if status == 200 and data.get("ready") is True and data.get("webviewWindowCount") == 0:
                 return  # 就绪且无窗口，启动完成
-            time.sleep(0.2)
+            self._sleep(0.2)
         self._token = None
         raise ValueError("backend_start_timeout")
 
@@ -268,7 +271,7 @@ class Backend:
         while self._clock() < deadline:
             if self._process.poll() is not None:
                 return True
-            time.sleep(0.1)
+            self._sleep(0.1)
         return self._process.poll() is not None
 
     def _verify_our_process(self) -> None:

@@ -166,11 +166,20 @@ KB_ROOT/
 
 ### 6.2 LLM Wiki 引擎 `engines/llmwiki/`（进阶）
 
-> **状态：计划中，配套程序尚未发布。** 控制台里这个选项显示"即将提供"。目前要用它，需要在设置里填 `llmwiki_binary`（LLM Wiki 后台程序的绝对路径），否则健康检查会报 `llmwiki_binary_missing`。
+> **状态：v0.2.0 起可用。** 仅支持 Apple 芯片（包含 Rosetta 环境）。资源清单固定为 Release `headless-v2.0.6-1` 的附件与程序本体 SHA-256；2026-11-02 在真机上用虚构笔记跑通两轮：导入 → Update Wiki → 轻量检查 → 确认，第二轮更新已有主题页时旧来源引用全部保留。
 
-- 依赖一个基于 StoneLL1/llm-wiki-desktop（Apache-2.0）的分支，增加了无窗口的 `--serve-api` 接口和长上下文控制，计划在 GitHub 发布 Apple 芯片版本。项目模板文字的来源和许可证见 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
+- 后台来自 [tyr1105/llm-wiki-desktop 的 headless 分支](https://github.com/tyr1105/llm-wiki-desktop/tree/headless)，基于 StoneLL1/llm-wiki-desktop v2.0.6（Apache-2.0），增加无窗口 `--serve-api` 接口和长上下文控制；GitHub Actions 在干净构建机上构建 Apple 芯片版本。许可证与改动见 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
+- 只有已选择该引擎、或向导刚请求下载时，后台资源线程才准备 `llmwiki`；轻量用户的该项为 `not_needed`，不影响“资源全部就绪”。第一次点卡片返回 202 并显示下载进度，不保存引擎；程序通过固定 SHA-256 校验后，向导自动再做一次健康检查，检查完成在 `finally` 里关闭后台，健康才保存选择。
+- 资源下载复用系统 curl 和 `fetch()`：断点续传、大小与压缩包 SHA-256 校验、校验失败完整重下一次；解压到临时目录，再核对程序本体 SHA-256，设置 0755 后整体原子替换到 `APP_HOME/vendor/<extract_dir>/`。守护进程或 CLI 将程序绝对路径自动写入 `llmwiki_binary`。包内 LICENSE、NOTICE、HEADLESS.md 保留；不使用会添加隔离标记的下载方式。
+- 后台启动前在 `APP_HOME/llmwiki-bin/` 生成 `claude` / `codex` 包装脚本，PATH 优先查这里；只要求当前提供方对应的命令存在，内容未变不重写。HOME 和 USER 取当前 UID 的系统账户记录 `pwd.getpwuid(os.getuid())`，不继承可被覆盖的环境值。路径与 `model.conf` 的模型值用 `shlex.quote` 引用；模型名仅允许字母、数字和 `._:-[]`，最长 100 字符，空串表示默认模型。
+- 生成 claude 脚本时复用轻量提供方的 `--help` 探测，分别确认 `--safe-mode` 和 `--no-session-persistence` 的支持情况；只在 `--print` / `-p` 调用中追加受支持且原参数没有的选项，避免重复后台已经传入的参数。前者屏蔽个人的 CLAUDE.md、Skill 和插件，后者不保存本次会话。健康检查、日常运行通过同一个公共工厂创建引擎。
 - 适配层把 `package.md` 作为 Source 导入，按 5 条或 80KB 一组调用 Update Wiki，再做轻量检查后确认：只要丢了原有的来源引用，或引用了未登记的来源，就驳回；改动了 10 个及以上已有页面、或有删除和覆盖时，交给用户决定。
-- 整理模型只支持 Claude Code 或 Codex（由 LLM Wiki 后台调用）。
+- 真机联调确认的后台行为：
+  - 导入条目本身不带来源编号；提交任务结果的 `result.reference.completion.newSources`（以及 `updatedSources`）列出 `sourceId`、`versionId`、`wikiPath`、`contentHash`，`contentHash` 就是导入文件的 SHA-256，适配层按它认出自己这一条，再用 `GET /sources` 核对。来源页落在 `wiki/sources/local/<文件名>.md`，原文在 `raw/sources/<sourceId>/<versionId>/`。
+  - 后台不往知识库的 `main` 分支提交：每次整理的输入、确认前和确认后快照存为 `refs/llm-wiki/operations/<任务编号>/{baseline,before,planned,after}`，改动直接写在工作区，所以 `git status` 显示未提交改动是正常状态，不影响下一轮。
+  - 整理用的语言只取 LLM Wiki 全局设置里的界面语言（`~/.config/llm-wiki-desktop/settings.json` 的 `language`，默认 `en`），知识库没有单独的语言设置。所以页面语言跟随桌面版的界面语言，没装桌面版时是英文。
+  - 无窗口模式仍会在菜单栏放一个 LLM Wiki 图标（上游行为）。
+- 整理模型只支持已在本机登录的 Claude Code 或 Codex（由 LLM Wiki 后台调用）；提供方保存和向导结束均校验组合。自动整理期间必须关闭桌面版；待用户审阅时暂停整理，用户等后台关闭后在桌面版打开同一项目接受或拒绝，再关闭桌面版并继续。
 
 ## 7. 设置 `settings.json`
 
@@ -183,7 +192,7 @@ KB_ROOT/
 ```
 
 - `first_import_limit`：首次导入范围。整数 N 只在**第一次成功扫描**时生效：当时排在第 N 位以后的旧收藏标记为 `skipped`，之后新收藏的笔记不受限制；`null` 表示全部收藏。改成 `null` 后，之前跳过的旧收藏会在下次运行时重新排队。
-- `llmwiki_binary`：LLM Wiki 后台程序的绝对路径（§6.2），只能在本机设置文件里修改，控制台接口不接受这个字段。
+- `llmwiki_binary`：LLM Wiki 后台程序的绝对路径（§6.2），下载并校验完成后由守护进程或 `assets install-llmwiki` 命令自动写入；控制台接口仍不接受这个字段。
 - 控制台日常页只能修改定时、每次条数、清理开关、语音模型和模型名；其余字段只能通过首次设置向导写入。
 - API Key **不进** `settings.json`，存进 macOS 钥匙串：服务名 `xhs-wiki`，账户名为提供方名称。用系统自带的 `security` 命令读写，命令行参数里不出现 Key 本身（通过标准输入传入）。
 
@@ -274,7 +283,7 @@ for stage in [download, parse, ingest, distill]:
   3. 检查 uv（没有就征求同意后，用官方安装脚本装到用户目录）；
   4. 在 `APP_HOME/venv` 里装好 Python 3.12 和本项目。远程安装直接下载 GitHub 的源码压缩包（`archive/refs/heads/main.tar.gz`），不需要 git；重型依赖只用预编译包（`--only-binary`），让安装器自动选出兼容当前 macOS 版本和芯片的版本；
   5. 启动服务并打开控制台：征得同意后写入 LaunchAgent（写 plist 时把当前的 PATH、代理和镜像设置一起写进去；工作目录和日志不放 `~/Documents`），否则用 nohup 启动临时服务；然后运行 `xhs-wiki open`；
-  6. XHS-Downloader 和语音模型交给服务在后台下载（按固定 sha256 核对），脚本不等待；
+  6. XHS-Downloader 和语音模型交给服务在后台下载（按固定 SHA-256 核对），脚本不等待；LLM Wiki 无窗口后台仅在选择该引擎时按需下载，也可用 `xhs-wiki assets install-llmwiki` 下载；其压缩包和程序本体分别校验固定 SHA-256，通过后自动配置路径；
   7. 渲染 Skill；
   8. 建立命令链接 `~/.local/bin/xhs-wiki`；
   9. 结束提示。
