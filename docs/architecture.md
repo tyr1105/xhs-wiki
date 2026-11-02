@@ -93,6 +93,7 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);   -- schema_version 等
 ## 4. 下载 `download.py`
 
 - 调用 XHS-Downloader 2.8 的 Python 接口（把 `APP_HOME/vendor/XHS-Downloader-2.8` 加进 `sys.path`，然后 `from source import XHS`），下载到 `work/<note_id>/media/`。
+- 下载组件沿用上游默认的浏览器模拟（curl_cffi 的 `impersonate="chrome146"`）。评估过构造后把会话的 `impersonate` 置空：技术上可行，但小红书会把笔记页请求跳转到登录页、拿不到内容（见 [#1](https://github.com/tyr1105/xhs-wiki/issues/1)），所以保留默认。本项目自身不加其他反检测手段。
 - 单个文件上限 1 GiB；磁盘剩余低于 10 GiB 就停止下载。
 - 视频下载后用 PyAV 检查：至少有一个宽高有效的视频流，并且能解码出第一帧，否则视为文件不完整。
 - 失败记作 `failed:download`，错误代码包括：`metadata_unavailable`（拿不到笔记信息）、`media_check_failed`（下载的媒体文件不完整）、`network_error`、`file_too_large`、`disk_low`。
