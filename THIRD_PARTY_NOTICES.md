@@ -17,7 +17,7 @@ xhs-wiki 本身采用 [GPL-3.0-or-later](LICENSE) 许可证。仓库里包含一
 
 - **源码与构建**：[tyr1105/llm-wiki-desktop 的 headless 分支](https://github.com/tyr1105/llm-wiki-desktop/tree/headless)，基于 [StoneLL1/llm-wiki-desktop](https://github.com/StoneLL1/llm-wiki-desktop) v2.0.6；Apple 芯片的发布附件由 GitHub Actions 在干净构建机上编译。
 - **许可证**：Apache License 2.0。后台不随本仓库分发，用户选用 LLM Wiki 引擎后从该分支仓库的 GitHub Release 下载；压缩包和解压后的程序本体按资源清单分别校验 SHA-256。
-- **上游改动**：增加无窗口 `--serve-api --headless` 接口和长上下文控制，以便 xhs-wiki 在本机调用导入、整理与审阅流程；完整改动以分支源码为准。
+- **上游改动**：增加无窗口 `--serve-api --headless` 接口、长上下文控制和固定整理页面语言的环境变量，以便 xhs-wiki 在本机调用导入、整理与审阅流程；完整改动以分支源码为准。
 - **随包声明**：解压目录中的 `LICENSE`、`NOTICE`、`HEADLESS.md` 原样保留，包括上游版权与归属信息；本项目的 GPL-3.0-or-later 声明不替代后台自身的 Apache-2.0 许可证。
 
 ## 运行时下载、不随仓库分发的组件

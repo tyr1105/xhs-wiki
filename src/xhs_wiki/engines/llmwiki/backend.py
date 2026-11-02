@@ -13,7 +13,7 @@ project.open_project 都假设"后台已经在运行且无窗口"。
   Backend 对象的内存里，通过环境变量 LLM_WIKI_API_TOKEN 传给子进程；
   绝不进日志、异常、repr 或任何文件；
 - 子进程环境只给 HOME、USER、PATH（agent_bin_dir 在最前，让后台找到
-  我们的 claude/codex 包装脚本，见 agents.py）和令牌这四项；
+  我们的 claude/codex 包装脚本，见 agents.py）、令牌和页面语言这五项；
 - 后台和桌面版共用单实例锁：桌面版开着时我们启动的进程会马上退出，
   这时要抛 EngineUnavailable("llmwiki_desktop_running") 而不是瞎等。
 """
@@ -58,6 +58,13 @@ _ACTIVE_TASK_STATUSES = {"running", "queued", "cancelling"}
 # 后台子进程的 PATH：agent_bin_dir 排最前，后面接 macOS 常用系统目录。
 # 故意不继承用户 PATH——后台环境保持最小，避免用户 shell 配置干扰。
 _COMMON_PATH_DIRS = ("/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin")
+
+# 整理出的页面固定用简体中文写，通过环境变量 LLM_WIKI_CONTENT_LANGUAGE 传给后台。
+# 为什么要传：后台默认按 LLM Wiki 桌面版的界面语言写页面（两者共用
+# ~/.config/llm-wiki-desktop/ 里的设置，没装桌面版时是英文），知识库本身没有
+# 语言设置。这个变量从后台 2.0.6-2 起支持，只认 "zh-CN" 和 "en"；它只决定页面
+# 用什么语言写，不改桌面版的界面语言，也不写任何设置文件。
+CONTENT_LANGUAGE = "zh-CN"
 
 
 def _default_spawn(argv: list[str], env: dict) -> subprocess.Popen:
@@ -169,11 +176,14 @@ class Backend:
     # ---- 启动 -----------------------------------------------------------
 
     def _child_env(self, token: str) -> dict:
-        """构造子进程环境：只有 HOME、USER、PATH、LLM_WIKI_API_TOKEN。
+        """构造子进程环境：只有 HOME、USER、PATH、LLM_WIKI_API_TOKEN、
+        LLM_WIKI_CONTENT_LANGUAGE。
 
         令牌通过环境变量传给后台；后台读到后会从自己的环境里删掉，
         不写钥匙串。PATH 里 agent_bin_dir 在最前，后台找
         claude/codex 时会先命中我们的包装脚本（agents.py）。
+        页面语言固定传 CONTENT_LANGUAGE（简体中文），不读用户自己环境里的
+        同名变量：环境是从零构造的，所以整理结果不随桌面版界面语言变化。
         """
 
         return {
@@ -183,6 +193,7 @@ class Backend:
                 [str(self._agent_bin_dir), *_COMMON_PATH_DIRS]
             ),
             "LLM_WIKI_API_TOKEN": token,
+            "LLM_WIKI_CONTENT_LANGUAGE": CONTENT_LANGUAGE,
         }
 
     def _expected_argv(self) -> list[str]:

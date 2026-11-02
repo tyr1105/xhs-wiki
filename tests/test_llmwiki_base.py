@@ -6,7 +6,7 @@
   端口 0）验证 Host / Origin / 令牌 / 幂等键 / 请求体上限 / 错误解析；
 - backend.py：用一个假的"可执行文件"（测试写到临时目录的脚本）代替
   真实 LLM Wiki：它从环境变量读令牌、启动假服务器，并把我们关心的
-  事实（令牌是否在环境变量里、命令行参数、每个请求的头）记录成
+  事实（令牌是否在环境变量里、命令行参数、收到的页面语言、每个请求的头）记录成
   JSONL（记录里只有布尔值和头部名，绝不写令牌本身）；
 - journal.py：用假客户端验证复用 key、签名变化、结果不明、归档上限；
 - project.py：用真实的 git（只在临时目录里，不碰全局配置）验证
@@ -43,6 +43,7 @@ from xhs_wiki.engines.llmwiki import (
     open_project,
     scaffold,
 )
+from xhs_wiki.engines.llmwiki.backend import CONTENT_LANGUAGE
 
 # 一个虚构的、格式合法的 projectId（uuid v4 形状）。
 FAKE_PROJECT_ID = "11111111-2222-4333-8444-555555555555"
@@ -242,9 +243,9 @@ class TestClient:
 # 假后台可执行文件（backend 测试用；也内嵌一份假服务器实现）
 # ---------------------------------------------------------------------------
 
-# 假后台的服务器脚本：从环境变量读令牌，把 argv / 令牌格式 / 每个请求
-# 的头部事实记进 JSONL（记录里只有布尔值，不写令牌本身），再启动
-# HTTP 服务器。由测试写到临时目录，用当前 venv 的 python 执行。
+# 假后台的服务器脚本：从环境变量读令牌，把 argv / 令牌格式 / 收到的页面
+# 语言 / 每个请求的头部事实记进 JSONL（记录里只有布尔值，不写令牌本身），
+# 再启动 HTTP 服务器。由测试写到临时目录，用当前 venv 的 python 执行。
 FAKE_SERVER_PY = r'''
 import json, os, re, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -258,6 +259,7 @@ with open(record, "a") as f:
     f.write(json.dumps({
         "argv": args,
         "token_in_env": bool(re.fullmatch(r"[0-9a-f]{64}", token)),
+        "content_language": os.environ.get("LLM_WIKI_CONTENT_LANGUAGE"),
     }) + "\n")
 
 class H(BaseHTTPRequestHandler):
@@ -314,7 +316,7 @@ def _write_fake_backend(tmp_path: Path) -> tuple[Path, Path]:
     server_py.write_text(FAKE_SERVER_PY, encoding="utf-8")
     binary = tmp_path / "fake-llm-wiki"
     # FAKE_RECORD 路径直接写死在垫片里：Backend 给子进程的环境是固定的
-    # 四个变量，没法额外传观察文件路径。"$0"（垫片自身路径，即 Backend
+    # 五个变量，没法额外传观察文件路径。"$0"（垫片自身路径，即 Backend
     # 的 binary）也传给服务器脚本，这样记录的 argv 和 ps 看到的命令行
     # 都完整包含 binary 路径。
     binary.write_text(
@@ -391,6 +393,27 @@ class TestBackend:
             assert "--serve-api --headless" in argv
         finally:
             backend.stop()
+
+    def test_child_receives_fixed_chinese_page_language(self, tmp_path):
+        # 页面语言真的传进了后台进程（假后台记下它在自己环境里看到的值），
+        # 不只是写在 _child_env 返回的字典里。
+        binary, record = _write_fake_backend(tmp_path)
+        backend = self._make(tmp_path, binary, _pick_free_port())
+        try:
+            backend.start()
+            assert _read_record(record)[0]["content_language"] == "zh-CN"
+        finally:
+            backend.stop()
+
+    def test_child_env_ignores_inherited_page_language(self, tmp_path, monkeypatch):
+        # 环境从零构造：用户自己环境里的同名变量（这里设成 en）不会被继承，
+        # 页面语言始终是 CONTENT_LANGUAGE（简体中文），子进程也只拿到这五项。
+        monkeypatch.setenv("LLM_WIKI_CONTENT_LANGUAGE", "en")
+        backend = self._make(tmp_path, tmp_path / "not-started", _pick_free_port())
+        env = backend._child_env("f" * 64)
+        assert set(env) == {"HOME", "USER", "PATH", "LLM_WIKI_API_TOKEN",
+                            "LLM_WIKI_CONTENT_LANGUAGE"}
+        assert env["LLM_WIKI_CONTENT_LANGUAGE"] == CONTENT_LANGUAGE == "zh-CN"
 
     def test_request_headers_from_backend_client(self, tmp_path):
         binary, record = _write_fake_backend(tmp_path)
