@@ -268,7 +268,7 @@ remove_log_files() {
 
 # 查询 Skill 可能装在好几个 AI 工具的技能目录里（控制台里勾选过哪个，
 # 本工具就往哪个写过 xhs-wiki/SKILL.md）：Claude Code 的目录，加上下面
-# 这些相对"其他 AI 工具主目录"（默认就是 $HOME）的目录。卸载时全都查一遍。
+# 这些相对"其他 AI 工具主目录"（默认就是 ${HOME}）的目录。卸载时全都查一遍。
 # 这份清单要和 src/xhs_wiki/skill.py 的 TARGET_DIRS 一致（测试会核对）。
 EXTRA_SKILL_DIRS=(".workbuddy/skills" ".agents/skills" ".codebuddy/skills" ".trae/skills" ".trae-cn/skills" ".qoder/skills" ".lingma/skills" ".kiro/skills" ".gemini/config/skills" ".cline/skills")
 
