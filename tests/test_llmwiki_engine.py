@@ -1106,7 +1106,8 @@ class TestEngine:
             "engine": "llmwiki",
             "index": "wiki/index.md",
             "topics_dir": "wiki",
-            "sources_dir": "raw/sources",
+            # 后台把来源页写在 wiki/sources/（raw/sources/ 下是导入原件）
+            "sources_dir": "wiki/sources",
         }
 
     def test_source_exists_true_and_false(self, wiki):

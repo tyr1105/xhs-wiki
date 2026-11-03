@@ -2,10 +2,12 @@
 """tests/test_skill.py —— Claude Skill 渲染 / 安装 / 卸载的测试。
 
 全部在临时目录完成，绝不碰真实的 ~/.claude。渲染断言里专门检查
-"不出现具体领域词"（红线：Skill 不能暗示用户的收藏范围）。
+"不出现具体领域词"（红线：Skill 不能暗示用户的收藏范围），并核对两种
+引擎渲染出的 Skill 都指向各自真实存在的目录。
 """
 
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,6 +24,21 @@ def fake_settings(**overrides) -> dict:
     }
     settings.update(overrides)
     return settings
+
+
+def skill_paths(text: str, kb_root: Path) -> set:
+    """取出 Skill"查询步骤"里写到的全部路径，换算成绝对路径。
+
+    查询步骤里的路径都写在反引号里：带知识库位置的是绝对路径
+    （例如 `<知识库>/索引.md`），只写目录名的是相对知识库根目录的写法
+    （例如 `主题/`）。Path 会去掉末尾的斜杠，方便直接和目录比较。
+    """
+    steps = text.split("## 查询步骤", 1)[1]
+    paths = set()
+    for raw in re.findall(r"`([^`]+)`", steps):
+        path = Path(raw)
+        paths.add(path if path.is_absolute() else kb_root / path)
+    return paths
 
 
 class TestRender(unittest.TestCase):
@@ -77,6 +94,79 @@ class TestRender(unittest.TestCase):
         text = skill.render(fake_settings())
         self.assertIn("用户本人", text)
         self.assertIn("小红书收藏", text)
+
+    def test_render_markdown_steps_unchanged(self):
+        """轻量引擎的查询步骤和模板改用占位符之前一字不差。"""
+        kb_root = str(Path("~/FakeKB").expanduser())
+        text = skill.render(fake_settings())
+        self.assertIn(
+            f"1. 先读 `{kb_root}/索引.md`，了解有哪些主题；\n"
+            "2. 选出与用户问题相关的主题，读对应的主题页（`主题/` 目录）；\n"
+            f"3. 索引里找不到合适的主题时，用关键词在 `{kb_root}/来源/` 目录里搜索"
+            "（例如用 Grep），命中后再读对应的来源页；\n"
+            "4. 需要细节时，顺着主题页里的链接读来源页（`来源/` 目录）；\n",
+            text)
+
+    def test_render_leaves_no_placeholder(self):
+        """两种引擎、设置完成与否，渲染结果里都不能残留 {{…}} 占位符。"""
+        for engine in ("markdown", "llmwiki"):
+            for completed in (True, False):
+                text = skill.render(
+                    fake_settings(engine=engine, setup_completed=completed))
+                self.assertNotIn("{{", text, (engine, completed))
+                self.assertNotIn("}}", text, (engine, completed))
+
+
+class TestRenderFollowsEngineLayout(unittest.TestCase):
+    """Skill 里的索引、主题页、来源页位置，必须是当前引擎真实建出来的目录。
+
+    以前模板写死了轻量引擎的 索引.md、主题/、来源/：选 LLM Wiki 引擎的人
+    在 Claude Code 里提问时，Skill 指向不存在的目录。这里两种引擎各搭一次
+    真实的知识库骨架（不调模型、不联网），再逐个核对 Skill 里的路径都在。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.kb = Path(self.tmp.name) / "kb"
+
+    def assert_paths_exist(self, text: str, expected: set) -> None:
+        """Skill 写到的路径正好是 expected，而且每一个都真实存在。"""
+        paths = skill_paths(text, self.kb)
+        self.assertEqual(paths, expected)
+        for path in paths:
+            self.assertTrue(path.exists(), f"Skill 指向不存在的路径：{path}")
+
+    def test_markdown_paths_exist(self):
+        from xhs_wiki.engines.markdown.engine import MarkdownEngine
+
+        engine = MarkdownEngine(self.kb, provider=None)
+        # health 建出 主题/ 和 来源/；没有待整理的笔记时 distill 不调用
+        # 模型，只生成 索引.md——这就是轻量引擎第一次运行后的骨架。
+        self.assertEqual(engine.health(), (True, "ok"))
+        self.addCleanup(engine.store.close)
+        engine.distill([])
+        text = skill.render(fake_settings(kb_root=str(self.kb)))
+        self.assert_paths_exist(text, {
+            self.kb / "索引.md",
+            self.kb / "主题",
+            self.kb / "来源",
+        })
+
+    def test_llmwiki_paths_exist_in_scaffold(self):
+        from xhs_wiki.engines.llmwiki.project import scaffold
+
+        # 向导第一次选 LLM Wiki 引擎时就是这样搭出知识库的（还没导入任何收藏）。
+        scaffold(self.kb)
+        text = skill.render(fake_settings(kb_root=str(self.kb), engine="llmwiki"))
+        self.assert_paths_exist(text, {
+            self.kb / "wiki" / "index.md",
+            self.kb / "wiki",
+            self.kb / "wiki" / "sources",
+        })
+        # 轻量引擎的目录名一个都不能出现在 LLM Wiki 用户的 Skill 里。
+        for name in ("索引.md", "主题/", "来源/"):
+            self.assertNotIn(name, text)
 
 
 class TestInstallUninstall(unittest.TestCase):

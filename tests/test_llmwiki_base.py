@@ -735,6 +735,8 @@ class TestScaffold:
             "wiki/overview.md",
             ".app/project.json",
             "raw/sources",
+            # 查询 Skill 指向的来源页目录，第一次导入前也要存在
+            "wiki/sources",
             ".app/tasks",
             "exports",
             "skills",

@@ -1,6 +1,6 @@
 [project]
 name = "xhs-wiki"
-version = "0.2.1"
+version = "0.2.2"
 description = "把你自己的小红书收藏整理成 Mac 本机、AI 能查的个人知识库 / Turn your own Xiaohongshu (RedNote) favorites into a local, AI-searchable knowledge base on macOS"
 readme = "README.md"
 license = "GPL-3.0-or-later"
