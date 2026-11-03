@@ -768,6 +768,13 @@ class TestSetupEngineAndLlm(DaemonTestBase):
         self.assertTrue(data.get("ok"))
         self.assertEqual(self.store.load_settings()["engine"], "markdown")
 
+    def test_engine_saved_clears_kb_stats_cache(self):
+        """换引擎后知识库统计的数法跟着变，旧的统计缓存不能再用。"""
+        self.server._kb_cache = (0.0, {"topics": 99, "sources": 99, "deferred": 0})
+        status, _ = self.post("/api/setup/engine", body={"engine": "markdown"})
+        self.assertEqual(status, 200)
+        self.assertIsNone(self.server._kb_cache)
+
     def test_engine_unhealthy_reason_returned(self):
         self.server.make_engine = lambda settings: FakeEngine(
             ok=False, reason="kb_not_writable:PermissionError")
@@ -1047,6 +1054,24 @@ class TestKbStats(DaemonTestBase):
         self.assertEqual(kb_data["topics"], 1)
         self.assertEqual(kb_data["sources"], 0)
         self.assertEqual(kb_data["deferred"], 1)
+
+    def test_kb_stats_llmwiki_layout_in_status(self):
+        """选 LLM Wiki 引擎时按 wiki/ 下的真实结构数（以前照轻量引擎的目录数，恒为 0）。"""
+        from xhs_wiki.engines.llmwiki.project import scaffold
+        kb = Path(self.tmp.name) / "wiki-kb"
+        scaffold(kb)  # 自带 index/log/overview 三个结构页，不算主题页
+        for page in ("wiki/concepts/concept-a.md",
+                     "wiki/sources/local/source-1.md",
+                     "wiki/sources/local/source-2.md"):
+            (kb / page).parent.mkdir(parents=True, exist_ok=True)
+            (kb / page).write_text("x", encoding="utf-8")
+        self.store.update_settings({"kb_root": str(kb), "engine": "llmwiki"})
+        self.server._kb_cache = None
+        _, data = self.request("GET", "/api/status")
+        kb_data = json.loads(data)["kb"]
+        self.assertEqual(kb_data["topics"], 1)
+        self.assertEqual(kb_data["sources"], 2)
+        self.assertEqual(kb_data["deferred"], 0)
 
     def test_kb_stats_cached_30_seconds(self):
         clock = FakeMonoClock()

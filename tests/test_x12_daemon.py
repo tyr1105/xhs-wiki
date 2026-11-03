@@ -318,7 +318,7 @@ def test_status_contains_optional_resource_and_platform(setup, monkeypatch):
             ledger.close()
     setup.server.ledger_scope = ledger_scope
     setup.server.disk_usage = lambda path: SimpleNamespace(free=100, total=200)
-    setup.server.cached_kb_stats = lambda path, counts: {}
+    setup.server.cached_kb_stats = lambda path, counts, engine=None: {}
     result = daemon.build_status(setup.server)
     assert result["llmwiki_supported"] is True
     assert result["assets"]["llmwiki"]["state"] == "not_needed"

@@ -44,6 +44,7 @@ from xhs_wiki.engines.llmwiki import (
     scaffold,
 )
 from xhs_wiki.engines.llmwiki.backend import CONTENT_LANGUAGE
+from xhs_wiki.engines.llmwiki.project import page_counts
 
 # 一个虚构的、格式合法的 projectId（uuid v4 形状）。
 FAKE_PROJECT_ID = "11111111-2222-4333-8444-555555555555"
@@ -831,6 +832,54 @@ class TestOpenProject:
         assert request["path"] == "/api/v1/projects/open"
         assert request["body"]["path"] == str(root.resolve())
         uuid.UUID(request["idem"])  # 幂等键是 uuid
+
+
+def _touch(path: Path) -> None:
+    """建一个内容无关紧要的页面文件（统计只看文件名，不读内容）。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("# 虚构页面\n", encoding="utf-8")
+
+
+class TestPageCounts:
+    """page_counts：按 LLM Wiki 知识库的真实目录数主题页和来源页。"""
+
+    def test_missing_project_counts_zero(self, tmp_path):
+        assert page_counts(tmp_path / "no-such-kb") == {"topics": 0, "sources": 0}
+
+    def test_fresh_scaffold_counts_zero(self, tmp_path):
+        # 刚搭好的知识库只有 index/log/overview 三个结构页，都不算主题页。
+        root = tmp_path / "kb"
+        scaffold(root)
+        assert page_counts(root) == {"topics": 0, "sources": 0}
+
+    def test_counts_topic_and_source_pages(self, tmp_path):
+        root = tmp_path / "kb"
+        scaffold(root)
+        wiki = root / "wiki"
+        # 整理出的页面：分布在后台的几个页面类型目录里，算主题页。
+        for page in ("concepts/concept-a.md", "concepts/concept-b.md",
+                     "entities/entity-a.md", "synthesis/synthesis-a.md"):
+            _touch(wiki / page)
+        # 导入的来源页（真机上的位置是 wiki/sources/local/<文件名>.md）。
+        for page in ("local/source-1.md", "local/source-2.md", "local/source-3.md"):
+            _touch(wiki / "sources" / page)
+        # 下面这些都不该算进去：桌面版里保存的问答、非 Markdown 文件、
+        # raw/ 下按编号存的导入原件。
+        _touch(wiki / "queries" / "saved-question.md")
+        _touch(wiki / "concepts" / "image.png")
+        _touch(root / "raw" / "sources" / "src-1" / "ver-1" / "original.md")
+        assert page_counts(root) == {"topics": 4, "sources": 3}
+
+    def test_symlinked_directory_not_followed(self, tmp_path):
+        # 子目录里的符号链接不跟进，不会数到知识库以外的文件。
+        root = tmp_path / "kb"
+        scaffold(root)
+        outside = tmp_path / "outside"
+        _touch(outside / "elsewhere.md")
+        (root / "wiki" / "concepts").mkdir(parents=True)
+        (root / "wiki" / "concepts" / "linked").symlink_to(outside)
+        (root / "wiki" / "sources" / "linked").symlink_to(outside)
+        assert page_counts(root) == {"topics": 0, "sources": 0}
 
 
 # ---------------------------------------------------------------------------
