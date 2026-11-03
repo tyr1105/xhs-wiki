@@ -26,7 +26,7 @@ Your RedNote saves, finally useful to your AI.
 
 小红书收藏夹越存越多，要用的时候翻不到底；视频里讲的话、图片上的字更是没法搜；问 AI，它又不知道你收藏过什么，只能给通用答案。
 
-**xhs-wiki** 每天自动把你的新收藏下载到本机，在本机识别图片里的文字、把视频里的话转成文字，再交给你选的 AI 模型，整理成按主题组织的知识库（普通的 Markdown 文件，也就是任何编辑器都能直接打开的纯文本笔记）。之后在 Claude Code（Anthropic 的 AI 助手）、腾讯 WorkBuddy、Codex、Cursor、Trae 这类 AI 工具里问到你收藏过的东西，它会调用 xhs-wiki 装好的查询 Skill（写给 AI 的一份查询说明），先查你自己的收藏，再回答并附上出处（来源笔记的标题和链接）；也可以直接说“查一下我的收藏”。
+**xhs-wiki** 每天自动把你的新收藏下载到本机，在本机识别图片里的文字、把视频里的话转成文字，再交给你选的 AI 模型，整理成按主题组织的知识库（普通的 Markdown 文件，也就是任何编辑器都能直接打开的纯文本笔记）。之后在 Claude Code（Anthropic 的 AI 助手）、腾讯 WorkBuddy、Codex、Cursor、Trae 这类 AI 工具里问到你收藏过的东西，它会调用 xhs-wiki 装好的查询 Skill（写给 AI 的一份查询说明），先查你自己的收藏，再回答并附上出处（来源笔记的标题和链接）；也可以直接说“查一下我的收藏”（实测过的是 Claude Code 和 Codex 命令行，其他工具按各家官方文档支持、还没实测）。
 
 这个项目源自作者的自用工作流（那套流程已经把 **1100 多条**小红书收藏整理成个人知识库，每天自动跟进新收藏）。xhs-wiki 是它的开源通用版，作者在全新安装的环境里完整跑通过导入最近 20 条收藏。
 
@@ -431,7 +431,7 @@ API Key 保存在 **macOS 钥匙串**（系统保存凭据的地方），不写�
 
 ### 没有 Claude Code 能用吗？
 
-能。整理模型可以选 Codex、Anthropic API 或 OpenAI 兼容接口；带出处的提问也不限 Claude Code：在向导最后一步（或控制台的“在哪些 AI 工具里提问”）勾上腾讯 WorkBuddy、Codex、Cursor、Trae、CodeBuddy、OpenClaw 等工具，查询 Skill 会写进它们的技能目录。实测过的是 Claude Code 和 Codex：先查收藏、附出处、查不到直说；其他工具按官方文档支持，还没实测（清单见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)）。哪个 AI 工具都不用，知识库照样生成，用 Obsidian 或任何编辑器浏览。Claude Code 的 Skill 在完成首次设置时就写到了 `~/.claude/skills/xhs-wiki/`，以后装了 Claude Code 直接就能用。
+能。整理模型可以选 Codex、Anthropic API 或 OpenAI 兼容接口；带出处的提问也不限 Claude Code：在向导最后一步（或控制台的“在哪些 AI 工具里提问”）勾上腾讯 WorkBuddy、Codex、Cursor、Trae、CodeBuddy、OpenClaw 等工具，查询 Skill 会写进它们的技能目录。实测过的是 Claude Code 和 Codex 命令行：先查收藏、附出处、查不到直说；其他工具按官方文档支持，还没实测（清单见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)）。哪个 AI 工具都不用，知识库照样生成，用 Obsidian 或任何编辑器浏览。Claude Code 的 Skill 在完成首次设置时就写到了 `~/.claude/skills/xhs-wiki/`，以后装了 Claude Code 直接就能用。
 
 ### 它会帮我整理小红书 App 里的收藏专辑吗？
 
