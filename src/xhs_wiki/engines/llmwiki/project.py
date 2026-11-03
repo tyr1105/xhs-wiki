@@ -11,7 +11,7 @@
 - wiki/index.md / wiki/log.md / wiki/overview.md：初始索引、日志和概览；
 - .app/project.json：项目标识文件，projectId 使用新生成的 uuid。
 
-目录结构取最小集合，只创建 raw/sources、wiki、
+目录结构取最小集合，只创建 raw/sources、wiki、wiki/sources、
 .app/tasks、exports、skills；其余子目录留给后台第一次整理时自建。
 
 在整体里的位置：用户第一次选择 LLM Wiki 引擎时由向导调 scaffold；
@@ -120,9 +120,14 @@ def _starter_overview(name: str) -> str:
 
 
 # 最小目录集合（Rust ensure_skeleton 的子集）。
+# wiki/sources 是后台导入来源页的位置，查询 Skill 的关键词搜索指向它
+# （见 engine.skill_context）。先建好，第一次导入之前 Skill 指的目录也
+# 存在；后台自己新建项目时同样会建这个目录。空目录不进 git，首次提交
+# 的内容不变。
 _SCAFFOLD_DIRS = (
     "raw/sources",
     "wiki",
+    "wiki/sources",
     ".app/tasks",
     "exports",
     "skills",

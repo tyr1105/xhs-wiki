@@ -355,14 +355,24 @@ class LlmWikiEngine:
         return _source_exists(ctx, source_id, version_id)
 
     def skill_context(self) -> dict:
-        """Claude Skill 需要的路径和说明（以真实目录结构为准）。"""
+        """Claude Skill 需要的路径和说明（以真实目录结构为准）。
+
+        skill.render 用这里的三个位置填查询步骤：
+        - index：后台维护的知识库首页 wiki/index.md；
+        - topics_dir：整理出的页面都在 wiki/ 下（entities/、concepts/
+          等子目录）；
+        - sources_dir：后台导入时把每条收藏的来源页写进 wiki/sources/
+          （真机上是 wiki/sources/local/<文件名>.md），主题页引用的就是
+          这里，schema.md 也这样规定。raw/sources/ 下按来源编号存的是
+          导入原件，不是给人读的来源页，Skill 不指向它。
+        """
 
         return {
             "kb_root": str(self.project_root),
             "engine": "llmwiki",
             "index": "wiki/index.md",
             "topics_dir": "wiki",
-            "sources_dir": "raw/sources",
+            "sources_dir": "wiki/sources",
         }
 
     # ---- 来源引用的持久化 ------------------------------------------------------
