@@ -4,7 +4,9 @@
 这个文件做什么：
 - scaffold(project_root)：在空目录（或不存在的目录）里搭出 LLM Wiki
   认得的最小知识库结构，然后 git init + 首次提交；
-- open_project(client, project_root)：通过接口打开知识库，拿到 projectId。
+- open_project(client, project_root)：通过接口打开知识库，拿到 projectId；
+- page_counts(project_root)：按知识库的真实目录数主题页和来源页
+  （控制台的知识库统计用）。
 
 默认内容与 LLM Wiki 后端创建项目时一致：
 - purpose.md / schema.md：通用模板中的知识库用途和页面结构说明；
@@ -255,3 +257,77 @@ def open_project(client, project_root, *, timeout: float = 900) -> str:
     if status != 200 or not project_id:
         raise ValueError("project_open_failed")
     return project_id
+
+
+# ---- 控制台统计：数主题页和来源页 --------------------------------------------
+
+# 后台自己维护的三个结构页（首页、日志、概览），不是从收藏整理出的主题页。
+_STRUCTURE_PAGES = frozenset({"index.md", "log.md", "overview.md"})
+
+# wiki/ 下不算主题页的子目录：sources/ 是导入的来源页（单独计数），
+# queries/ 是在桌面版里保存的问答，也不是从收藏整理出来的。
+_NON_TOPIC_DIRS = frozenset({"sources", "queries"})
+
+
+def _count_markdown(directory: Path) -> int:
+    """数一个目录（含全部子目录）下的 .md 文件个数。
+
+    只用 os.scandir 看文件名，绝不读文件内容；里面的符号链接不跟进，不会
+    数到知识库以外的文件；目录不存在或读不了按 0 算（统计不能让状态接口
+    出错）。
+    """
+
+    total = 0
+    stack = [Path(directory)]
+    while stack:
+        current = stack.pop()
+        try:
+            with os.scandir(current) as entries:
+                for entry in entries:
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            stack.append(Path(entry.path))
+                        elif (entry.is_file(follow_symlinks=False)
+                              and entry.name.endswith(".md")):
+                            total += 1
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    return total
+
+
+def page_counts(project_root) -> dict:
+    """数知识库里的主题页和来源页，给控制台的知识库统计用。
+
+    为什么单独数：LLM Wiki 的知识库没有轻量引擎的 主题/、来源/ 两个目录，
+    以前控制台照着轻量引擎去数，选这个引擎的人看到的主题数、来源数一直
+    是 0。这里按真实目录来数（和 schema.md、后台的原生布局一致）：
+    - sources：wiki/sources/ 下的全部 .md——后台导入时每条收藏写一页
+      （真机上是 wiki/sources/local/<文件名>.md）；
+    - topics：wiki/ 下整理出的页面——entities/、concepts/、synthesis/、
+      comparisons/ 等子目录里的 .md；不算 index.md、log.md、overview.md
+      三个结构页，也不算 sources/ 和 queries/ 两个子目录。
+      raw/ 下的导入原件不在 wiki/ 里，本来就不会数到。
+
+    返回 {"topics": 主题页数, "sources": 来源页数}；知识库还没建好时都是 0。
+    """
+
+    wiki = Path(project_root) / "wiki"
+    topics = 0
+    try:
+        with os.scandir(wiki) as entries:
+            for entry in entries:
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        if entry.name not in _NON_TOPIC_DIRS:
+                            topics += _count_markdown(Path(entry.path))
+                    elif (entry.is_file(follow_symlinks=False)
+                          and entry.name.endswith(".md")
+                          and entry.name not in _STRUCTURE_PAGES):
+                        topics += 1
+                except OSError:
+                    continue
+    except OSError:
+        pass  # wiki/ 不存在或读不了：主题页按 0 算
+    return {"topics": topics, "sources": _count_markdown(wiki / "sources")}

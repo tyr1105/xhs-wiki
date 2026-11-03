@@ -1287,17 +1287,28 @@ def count_files(directory: Path) -> int:
     return total
 
 
-def kb_stats(kb_root, ledger_counts: dict) -> dict:
+def kb_stats(kb_root, ledger_counts: dict, engine: str = "markdown") -> dict:
     """统计知识库：主题数、来源数（数目录下的文件）、暂缓数（台账的 deferred）。
 
     主题/来源是引擎写到磁盘上的 Markdown 文件，直接数文件；"暂缓"的笔记
     在台账里是 deferred 阶段（它的来源页混在来源目录里，靠文件分不出来），
     所以暂缓数取台账统计——台账是阶段的权威记录，也不用读文件内容。
+
+    两种引擎的目录结构不一样，按 ``engine`` 分开数：轻量引擎数 主题/ 和
+    来源/；LLM Wiki 引擎没有这两个目录，交给它自己的 page_counts 按
+    wiki/ 下的真实结构数（以前这里只认轻量引擎的目录，选 LLM Wiki 时
+    主题数、来源数一直是 0）。
     """
     root = Path(kb_root).expanduser()
+    if engine == "llmwiki":
+        from .engines.llmwiki.project import page_counts
+        pages = page_counts(root)
+    else:
+        pages = {"topics": count_files(root / "主题"),
+                 "sources": count_files(root / "来源")}
     return {
-        "topics": count_files(root / "主题"),
-        "sources": count_files(root / "来源"),
+        "topics": pages["topics"],
+        "sources": pages["sources"],
         "deferred": int(ledger_counts.get("deferred", 0)),
     }
 
@@ -1470,10 +1481,11 @@ class ServiceServer(ThreadingHTTPServer):
 
     # ---------------- 缓存的取数方法 ----------------
 
-    def cached_kb_stats(self, kb_root, ledger_counts: dict) -> dict:
-        """带缓存地取知识库统计（30 秒内不重算）。"""
+    def cached_kb_stats(self, kb_root, ledger_counts: dict,
+                        engine: str = "markdown") -> dict:
+        """带缓存地取知识库统计（30 秒内不重算）。engine 决定按哪种目录结构数。"""
         return self._cached("_kb_cache",
-                            lambda: kb_stats(kb_root, ledger_counts))
+                            lambda: kb_stats(kb_root, ledger_counts, engine))
 
     def _cached(self, attr, compute):
         """通用缓存逻辑，三个规则：
@@ -2006,6 +2018,8 @@ class ServiceHandler(BaseHTTPRequestHandler):
                 return
             if engine == "markdown" and manager is not None:
                 manager.release_llmwiki_request()
+            # 引擎换了，知识库统计的数法也跟着换；清掉缓存让下一次 /api/status 重算。
+            self.server._kb_cache = None
             # Skill 与设置在同一代次中更新，不让慢请求覆盖新选择。
             self.server.sync_skill(store.load_settings())
         self._send_json(200, {"ok": True, "engine": engine})
@@ -2321,7 +2335,7 @@ def build_status(server: ServiceServer) -> dict:
         "paused": store.pause_requested(),
         # ---------------- 台账、知识库、首次设置与模型 ----------------
         "counts": counts,
-        "kb": server.cached_kb_stats(settings["kb_root"], counts),
+        "kb": server.cached_kb_stats(settings["kb_root"], counts, engine=settings.get("engine")),
         "failed_notes": failed_notes,
         "setup_completed": bool(settings.get("setup_completed")),
         "llm": {
