@@ -233,15 +233,14 @@ ASR_MODEL="whisper"
   validate_app_home
   LOG_DIR="${XHS_WIKI_LOG_DIR:-$HOME/Library/Logs/xhs-wiki}"
   SKILLS_ROOT="${XHS_WIKI_SKILLS_ROOT:-$HOME/.claude/skills}"
-  # 另外两个可选的技能目录（WorkBuddy；Codex、Cursor、Gemini CLI、GitHub
-  # Copilot 共用的 ~/.agents/skills）。装不装由用户在控制台勾选，这里只
-  # 确定位置：隔离测试时用环境变量指到测试目录，并和上面几个一起写进
-  # 后台服务的环境，保证服务也写测试目录。
-  WORKBUDDY_SKILLS_ROOT="${XHS_WIKI_WORKBUDDY_SKILLS_ROOT:-$HOME/.workbuddy/skills}"
-  AGENTS_SKILLS_ROOT="${XHS_WIKI_AGENTS_SKILLS_ROOT:-$HOME/.agents/skills}"
+  # 其他 AI 工具（WorkBuddy、Codex 等）所在的主目录：它们的技能目录
+  # （~/.workbuddy/skills、~/.agents/skills 等）都在它下面，装不装由用户在
+  # 控制台勾选。隔离测试时指到测试目录，并和上面几个一起写进后台服务的
+  # 环境，保证服务也只写测试目录。
+  TOOLS_HOME="${XHS_WIKI_TOOLS_HOME:-$HOME}"
   CHROME_APP="${XHS_WIKI_CHROME_APP:-/Applications/Google Chrome.app}"
   export XHS_WIKI_HOME="$APP_HOME" XHS_WIKI_LOG_DIR="$LOG_DIR" XHS_WIKI_SKILLS_ROOT="$SKILLS_ROOT" \
-    XHS_WIKI_WORKBUDDY_SKILLS_ROOT="$WORKBUDDY_SKILLS_ROOT" XHS_WIKI_AGENTS_SKILLS_ROOT="$AGENTS_SKILLS_ROOT"
+    XHS_WIKI_TOOLS_HOME="$TOOLS_HOME"
   SERVE_COMMAND="env XHS_WIKI_HOME=$(quote_arg "$APP_HOME") XHS_WIKI_LOG_DIR=$(quote_arg "$LOG_DIR") $(quote_arg "$VENV_BIN/xhs-wiki") serve"
   OPEN_COMMAND="env XHS_WIKI_HOME=$(quote_arg "$APP_HOME") $(quote_arg "$VENV_BIN/xhs-wiki") open"
 
@@ -445,7 +444,7 @@ with path.open('rb') as source:
 data.setdefault('EnvironmentVariables', {}).update({
     name: os.environ[name]
     for name in ('HOME', 'XHS_WIKI_HOME', 'XHS_WIKI_LOG_DIR', 'XHS_WIKI_SKILLS_ROOT',
-                 'XHS_WIKI_WORKBUDDY_SKILLS_ROOT', 'XHS_WIKI_AGENTS_SKILLS_ROOT')
+                 'XHS_WIKI_TOOLS_HOME')
 })
 # 日志位置也写入 plist，确保 launchd 打开日志时与已创建的目录一致。
 data['StandardOutPath'] = str(Path(os.environ['XHS_WIKI_LOG_DIR']) / 'daemon.log')

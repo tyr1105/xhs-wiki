@@ -44,31 +44,57 @@ SKILL_NAME = "xhs-wiki"
 # 安装位置：每个位置是一个技能目录（store.SKILL_TARGETS 里的名字 → 目录）
 # ---------------------------------------------------------------------------
 #
-# 各工具去哪里找用户级的 Skill（2026-11 按各家官方文档核实）：
-# - claude_code：Claude Code 读 ~/.claude/skills；Cursor 为了兼容也读这里。
-# - workbuddy：腾讯 WorkBuddy。官方文档只写"上传或新建的技能默认存在用户
-#   配置目录、所有项目都能用"，具体路径 ~/.workbuddy/skills 来自多份使用
-#   资料和公开的技能合集安装说明，说法一致。WorkBuddy 只读用户授权过的
-#   工作空间，提问前要把知识库文件夹选为工作空间（控制台页面上有提示）。
+# 各工具去哪里找用户级的 Skill（2026-11-03 按各家官方文档核实）：
+# - claude_code：Claude Code 读 ~/.claude/skills；Cursor、OpenCode、Goose、
+#   Amp 为了兼容也读这里。
+# - workbuddy：腾讯 WorkBuddy。产品文档只写"上传或新建的技能默认存在用户
+#   配置目录"；具体路径 ~/.workbuddy/skills 来自腾讯 SkillHub 的安装说明和
+#   腾讯官方 GitHub 仓库（Tencent/skillhub、Tencent/BrowserSkill）。WorkBuddy
+#   只读用户授权过的工作空间，提问前要把知识库文件夹选为工作空间。
 # - agents：开放约定里的共用目录 ~/.agents/skills。OpenAI Codex（命令行、
-#   IDE 插件、ChatGPT 桌面版）、Cursor、Gemini CLI、GitHub Copilot 命令行
-#   的官方文档都把它列为用户级技能目录，写一份几个工具都能用。
+#   IDE 插件、ChatGPT 桌面版）、Cursor、Gemini CLI、GitHub Copilot、OpenClaw
+#   （默认状态目录时）、Kimi Code、Qwen Code、新版 Qoder、Zed、Devin Desktop
+#   （原 Windsurf）、OpenCode、Goose、Amp、Factory Droid 的官方文档都列了它，
+#   写一份这些工具都能用。
+# - 下面几个各有自己的目录，不读上面两个共用目录：腾讯 CodeBuddy
+#   ~/.codebuddy/skills；字节 Trae 国际版 ~/.trae/skills、国内版
+#   ~/.trae-cn/skills；阿里 Qoder ~/.qoder/skills；Qoder CN（原通义灵码）
+#   ~/.lingma/skills；AWS Kiro ~/.kiro/skills；Google Antigravity
+#   ~/.gemini/config/skills；Cline ~/.cline/skills。
+# 这些工具都要求技能名只用小写字母、数字和连字符、和文件夹同名，
+# xhs-wiki 都满足；OpenClaw 建议描述在 160 个字以内，现在是 113 个。
 #
-# 每个位置都能用环境变量改写：做隔离测试时，服务用真实主目录运行（Claude
-# 登录态要用），但 Skill 必须写进测试目录，不能写进用户真实的技能目录。
-# 环境变量在模块导入时读取（和 config.py 读 XHS_WIKI_HOME 的做法一致）。
-_TARGET_ROOT_SOURCES = {
-    "claude_code": ("XHS_WIKI_SKILLS_ROOT", "~/.claude/skills"),
-    "workbuddy": ("XHS_WIKI_WORKBUDDY_SKILLS_ROOT", "~/.workbuddy/skills"),
-    "agents": ("XHS_WIKI_AGENTS_SKILLS_ROOT", "~/.agents/skills"),
+# 每个位置的技能目录，写成相对主目录的路径。uninstall.sh 里有一份同样的
+# 清单（EXTRA_SKILL_DIRS），tests/test_skill_targets.py 会核对两边一致。
+TARGET_DIRS = {
+    "claude_code": ".claude/skills",
+    "workbuddy": ".workbuddy/skills",
+    "agents": ".agents/skills",
+    "codebuddy": ".codebuddy/skills",
+    "trae": ".trae/skills",
+    "trae_cn": ".trae-cn/skills",
+    "qoder": ".qoder/skills",
+    "lingma": ".lingma/skills",
+    "kiro": ".kiro/skills",
+    "antigravity": ".gemini/config/skills",
+    "cline": ".cline/skills",
 }
+
+# 其他 AI 工具所在的主目录。环境变量 XHS_WIKI_TOOLS_HOME 只给测试和隔离
+# 安装用：设了它，各工具的技能目录、检测本机工具的线索（连同"应用程序"
+# 文件夹）都换到它下面，绝不碰用户真实的 ~/.workbuddy、~/.agents，检测
+# 结果也不随开发者本机装了什么而变。Claude Code 的目录另外还能用老的
+# XHS_WIKI_SKILLS_ROOT 单独改写：隔离测试时服务要用真实主目录里的 Claude
+# 登录态，但 Skill 必须写进测试目录。环境变量在模块导入时读取（和
+# config.py 读 XHS_WIKI_HOME 的做法一致）。
+_TOOLS_HOME_OVERRIDE = os.environ.get("XHS_WIKI_TOOLS_HOME")
+_TOOLS_HOME = Path(_TOOLS_HOME_OVERRIDE or "~").expanduser()
+
 # 按 store.SKILL_TARGETS 的顺序排（页面按这个顺序显示）；那边多了一个
 # 位置、这里忘了写目录时，导入本模块就会报 KeyError，不会悄悄漏装。
-TARGET_ROOTS = {
-    target: Path(os.environ.get(_TARGET_ROOT_SOURCES[target][0])
-                 or _TARGET_ROOT_SOURCES[target][1]).expanduser()
-    for target in SKILL_TARGETS
-}
+TARGET_ROOTS = {target: _TOOLS_HOME / TARGET_DIRS[target] for target in SKILL_TARGETS}
+if os.environ.get("XHS_WIKI_SKILLS_ROOT"):
+    TARGET_ROOTS["claude_code"] = Path(os.environ["XHS_WIKI_SKILLS_ROOT"]).expanduser()
 
 # 旧名字：以前只有 Claude Code 一个位置，叫 DEFAULT_SKILLS_ROOT。
 DEFAULT_SKILLS_ROOT = TARGET_ROOTS["claude_code"]
@@ -78,24 +104,37 @@ DEFAULT_SKILLS_ROOT = TARGET_ROOTS["claude_code"]
 # 每一项：(给用户看的工具名, 所属安装位置, 主目录下的线索, App 名)。
 #
 # 线索故意避开本工具自己会建的目录：写 Skill 时会建出 ~/.claude、
-# ~/.workbuddy、~/.agents，拿它们当线索就成了"自己装完自己检测到"——
-# 没装 Claude Code 的人完成设置后也会看到"本机有 Claude Code"。所以
-# Claude Code 看 ~/.claude.json（它第一次运行就会建的配置文件）或桌面版
-# Claude.app，WorkBuddy 看 App 或它的默认工作文件夹 ~/WorkBuddy（官方 FAQ
-# 写的 Mac 主文件夹位置）。
+# ~/.workbuddy、~/.agents、~/.trae、~/.gemini/config 这些（见 TARGET_DIRS），
+# 拿它们当线索就成了"自己装完自己检测到"——没装 Claude Code 的人完成设置
+# 后也会看到"本机有 Claude Code"。所以 Claude Code 看 ~/.claude.json（它
+# 第一次运行就会建的配置文件）或桌面版 Claude.app，WorkBuddy 看 App 或它的
+# 默认工作文件夹 ~/WorkBuddy（官方 FAQ 写的 Mac 主文件夹位置），Gemini CLI
+# 看 ~/.gemini 里它自己的配置文件；只有 App 的工具就只看 App。线索不全
+# （比如 Cline 是编辑器插件，没有可靠的线索）时页面只是不显示"本机有"，
+# 不影响勾选。
 _TOOL_MARKERS = (
     ("Claude Code", "claude_code", (".claude.json",), ("Claude.app",)),
     ("WorkBuddy", "workbuddy", ("WorkBuddy",), ("WorkBuddy.app",)),
     ("Codex", "agents", (".codex",), ("Codex.app",)),
     ("Cursor", "agents", (".cursor",), ("Cursor.app",)),
-    ("Gemini CLI", "agents", (".gemini",), ()),
+    ("Gemini CLI", "agents", (".gemini/settings.json", ".gemini/oauth_creds.json"), ()),
     ("GitHub Copilot", "agents", (".copilot",), ()),
+    ("OpenClaw", "agents", (".openclaw",), ()),
+    ("Kimi Code", "agents", (".kimi-code",), ()),
+    ("Qwen Code", "agents", (".qwen",), ()),
+    ("Zed", "agents", (), ("Zed.app",)),
+    ("Devin Desktop", "agents", (), ("Devin.app", "Windsurf.app")),
+    ("OpenCode", "agents", (".config/opencode",), ()),
+    ("Goose", "agents", (".config/goose",), ("Goose.app",)),
+    ("CodeBuddy", "codebuddy", (), ("CodeBuddy.app", "CodeBuddy CN.app")),
+    ("Trae", "trae", (), ("Trae.app",)),
+    ("Trae CN", "trae_cn", (), ("Trae CN.app",)),
+    ("Qoder", "qoder", (), ("Qoder.app",)),
+    ("Qoder CN", "lingma", (), ("Qoder CN.app", "Lingma.app")),
+    ("Kiro", "kiro", (), ("Kiro.app",)),
+    ("Antigravity", "antigravity", (".gemini/antigravity", ".gemini/antigravity-cli"),
+     ("Antigravity.app",)),
 )
-
-# 检测用的主目录。环境变量 XHS_WIKI_DETECT_HOME 只给测试用：设了它，
-# 主目录和"应用程序"文件夹都换成它下面的路径，测试结果不随开发者本机
-# 装了什么而变，也不去看真实主目录。
-_DETECT_HOME_OVERRIDE = os.environ.get("XHS_WIKI_DETECT_HOME")
 
 # 引擎名 → 给用户看的说明（渲染进 SKILL.md 正文）。
 _ENGINE_LABELS = {
@@ -326,9 +365,14 @@ def sync(settings: dict, *, roots: dict = None, withdraw=()) -> dict:
 
 
 def _detect_dirs(home: Path = None) -> tuple:
-    """检测用的主目录和"应用程序"文件夹列表。"""
-    if home is None and _DETECT_HOME_OVERRIDE:
-        home = Path(_DETECT_HOME_OVERRIDE)
+    """检测用的主目录和"应用程序"文件夹列表。
+
+    调用方传了 home（测试）或者设了 XHS_WIKI_TOOLS_HOME 时，主目录和
+    "应用程序"文件夹都换到它下面；否则看真实主目录、/Applications 和
+    ~/Applications。
+    """
+    if home is None and _TOOLS_HOME_OVERRIDE:
+        home = _TOOLS_HOME
     if home is not None:
         return Path(home), (Path(home) / "Applications",)
     real_home = Path.home()

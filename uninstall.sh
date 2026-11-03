@@ -266,12 +266,15 @@ remove_log_files() {
   if [ -d "$LOG_DIR" ]; then echo "    日志目录里还有其他文件，目录已保留：$LOG_DIR"; fi
 }
 
-# 查询 Skill 可能装在三个技能目录里（控制台里勾选过哪个，本工具就往
-# 哪个写过 xhs-wiki/SKILL.md）：Claude Code 的、WorkBuddy 的，以及
-# Codex、Cursor、Gemini CLI、GitHub Copilot 共用的 ~/.agents/skills。
-# 卸载时三个都查一遍。每个目录同样只删本工具写的 SKILL.md（和写入中断
-# 时可能留下的 .skill-* 临时文件），目录清空后才删除目录本身。
-# XHS_WIKI_*SKILLS_ROOT 指错时，<它>/xhs-wiki 可能恰好是用户自己的文件夹。
+# 查询 Skill 可能装在好几个 AI 工具的技能目录里（控制台里勾选过哪个，
+# 本工具就往哪个写过 xhs-wiki/SKILL.md）：Claude Code 的目录，加上下面
+# 这些相对"其他 AI 工具主目录"（默认就是 $HOME）的目录。卸载时全都查一遍。
+# 这份清单要和 src/xhs_wiki/skill.py 的 TARGET_DIRS 一致（测试会核对）。
+EXTRA_SKILL_DIRS=(".workbuddy/skills" ".agents/skills" ".codebuddy/skills" ".trae/skills" ".trae-cn/skills" ".qoder/skills" ".lingma/skills" ".kiro/skills" ".gemini/config/skills" ".cline/skills")
+
+# 每个目录同样只删本工具写的 SKILL.md（和写入中断时可能留下的 .skill-*
+# 临时文件），目录清空后才删除目录本身。
+# 环境变量指错时，<它>/xhs-wiki 可能恰好是用户自己的文件夹。
 remove_skill_files() {
   local leftover dir
   for dir in "${SKILL_DIRS[@]}"; do
@@ -300,7 +303,7 @@ main() {
   set -euo pipefail
   # 脚本内部的 cd 一律不经过用户导出的 CDPATH。
   unset CDPATH
-  local supplied_app kb_value entry log_check_path skill_check_path skill_dir plan="" app_explicit="no"
+  local supplied_app kb_value entry log_check_path skill_check_path skill_dir tools_home plan="" app_explicit="no"
   local skill_check_paths=()
   ASSUME_YES="no"
   DRY_RUN="no"
@@ -328,15 +331,16 @@ main() {
   PLIST_PATH="$HOME/Library/LaunchAgents/io.github.xhs-wiki.service.plist"
   LAUNCH_AGENT_LABEL="io.github.xhs-wiki.service"
   LOG_DIR="$(expand_home "${XHS_WIKI_LOG_DIR:-$HOME/Library/Logs/xhs-wiki}")" || die log_dir_invalid '日志目录路径无效。'
-  # 三个技能目录（见 remove_skill_files 上方的说明），顺序：Claude Code、
-  # WorkBuddy、共用目录。每个都能用环境变量改写，和 install.sh 一致。
+  # 各 AI 工具的技能目录（见 remove_skill_files 上方的说明），第一个是
+  # Claude Code 的。和 install.sh 一致：XHS_WIKI_TOOLS_HOME 改写其他工具
+  # 所在的主目录，XHS_WIKI_SKILLS_ROOT 单独改写 Claude Code 的目录。
+  tools_home="$(expand_home "${XHS_WIKI_TOOLS_HOME:-$HOME}")" || die skill_dir_invalid 'AI 工具主目录（XHS_WIKI_TOOLS_HOME）路径无效。'
   SKILL_DIRS=()
-  skill_dir="$(expand_home "${XHS_WIKI_SKILLS_ROOT:-$HOME/.claude/skills}/xhs-wiki")" || die skill_dir_invalid 'Skill 目录路径无效。'
+  skill_dir="$(expand_home "${XHS_WIKI_SKILLS_ROOT:-$tools_home/.claude/skills}/xhs-wiki")" || die skill_dir_invalid 'Skill 目录路径无效。'
   SKILL_DIRS+=("$skill_dir")
-  skill_dir="$(expand_home "${XHS_WIKI_WORKBUDDY_SKILLS_ROOT:-$HOME/.workbuddy/skills}/xhs-wiki")" || die skill_dir_invalid 'WorkBuddy 的 Skill 目录路径无效。'
-  SKILL_DIRS+=("$skill_dir")
-  skill_dir="$(expand_home "${XHS_WIKI_AGENTS_SKILLS_ROOT:-$HOME/.agents/skills}/xhs-wiki")" || die skill_dir_invalid '共用技能目录（~/.agents/skills）的路径无效。'
-  SKILL_DIRS+=("$skill_dir")
+  for entry in "${EXTRA_SKILL_DIRS[@]}"; do
+    SKILL_DIRS+=("$tools_home/$entry/xhs-wiki")
+  done
   # 删除参数保留原路径，绝不能把末级符号链接解析成目标后再删目标。
   # 去掉末尾斜杠才能可靠判断目录链接；遇到链接直接停下，交给用户核对。
   while [ "$LOG_DIR" != / ] && [ "${LOG_DIR%/}" != "$LOG_DIR" ]; do LOG_DIR="${LOG_DIR%/}"; done

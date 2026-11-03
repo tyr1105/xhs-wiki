@@ -254,8 +254,9 @@ class TestDaemonSync(unittest.TestCase):
         target = Path(self.tmp.name) / "skills" / "xhs-wiki" / "SKILL.md"
         self.assertTrue(target.is_file())
         # 半份设置里没有 skill_targets：按默认只装 Claude Code，别的工具不碰。
-        self.assertEqual(results, {"claude_code": "installed",
-                                   "workbuddy": "unchanged", "agents": "unchanged"})
+        from xhs_wiki.store import SKILL_TARGETS
+        self.assertEqual(results, {**dict.fromkeys(SKILL_TARGETS, "unchanged"),
+                                   "claude_code": "installed"})
         self.assertFalse((Path(self.tmp.name) / "wb").exists())
         self.assertFalse((Path(self.tmp.name) / "agents").exists())
 

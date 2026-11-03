@@ -269,17 +269,26 @@ for stage in [download, parse, ingest, distill]:
 
 **装进哪些 AI 工具**：SKILL.md 是开放的 Agent Skills 格式（一个文件夹，放带 `name`、`description` 的 Markdown），各家只是去不同目录找。同一份渲染结果写到设置 `skill_targets` 勾选的位置（`skill.py` 的 `TARGET_ROOTS`）：
 
-| 位置 | 目录 | 哪些工具读（2026-11 核实） |
+| 位置 | 目录 | 哪些工具读（2026-11-03 按官方文档核实） |
 |---|---|---|
-| `claude_code`（默认） | `~/.claude/skills/xhs-wiki/` | Claude Code；Cursor 为了兼容也读 |
-| `workbuddy` | `~/.workbuddy/skills/xhs-wiki/` | 腾讯 WorkBuddy（官方文档只写"用户配置目录"，具体路径来自多份使用资料） |
-| `agents` | `~/.agents/skills/xhs-wiki/` | OpenAI Codex（命令行、IDE 插件、ChatGPT 桌面版）、Cursor、Gemini CLI、GitHub Copilot 命令行 |
+| `claude_code`（默认） | `~/.claude/skills/xhs-wiki/` | Claude Code；Cursor、OpenCode、Goose、Amp 为了兼容也读 |
+| `workbuddy` | `~/.workbuddy/skills/xhs-wiki/` | 腾讯 WorkBuddy（产品文档只写"用户配置目录"，具体路径来自腾讯 SkillHub 安装说明和腾讯官方 GitHub 仓库） |
+| `agents` | `~/.agents/skills/xhs-wiki/` | OpenAI Codex（命令行、IDE 插件、ChatGPT 桌面版）、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi Code、Qwen Code、新版 Qoder、Zed、Devin Desktop（原 Windsurf）、OpenCode、Goose、Amp、Factory Droid |
+| `codebuddy` | `~/.codebuddy/skills/xhs-wiki/` | 腾讯 CodeBuddy（命令行版官方写明，IDE 版按同一套文档推断） |
+| `trae` / `trae_cn` | `~/.trae/skills/xhs-wiki/` / `~/.trae-cn/skills/xhs-wiki/` | 字节 Trae 国际版 / 国内版 |
+| `qoder` | `~/.qoder/skills/xhs-wiki/` | 阿里 Qoder |
+| `lingma` | `~/.lingma/skills/xhs-wiki/` | Qoder CN（原通义灵码） |
+| `kiro` | `~/.kiro/skills/xhs-wiki/` | AWS Kiro |
+| `antigravity` | `~/.gemini/config/skills/xhs-wiki/` | Google Antigravity（App、IDE、命令行） |
+| `cline` | `~/.cline/skills/xhs-wiki/` | Cline |
 
-- 每个目录都能用环境变量改写（`XHS_WIKI_SKILLS_ROOT`、`XHS_WIKI_WORKBUDDY_SKILLS_ROOT`、`XHS_WIKI_AGENTS_SKILLS_ROOT`），隔离测试时指到测试目录，安装脚本会把它们写进后台服务的环境。
+实测过的只有 Claude Code 和 Codex 命令行，其余按官方文档支持。控制台把前三个位置直接列出，其余收在"更多 AI 工具"里。
+
+- 目录以相对主目录的写法登记在 `skill.TARGET_DIRS`（`uninstall.sh` 的 `EXTRA_SKILL_DIRS` 是同一份清单，测试核对两边一致）。隔离测试时用 `XHS_WIKI_TOOLS_HOME` 把 Claude Code 以外各工具的主目录（技能目录和检测线索都在它下面）指到测试目录，`XHS_WIKI_SKILLS_ROOT` 单独改写 Claude Code 的目录；安装脚本把两者写进后台服务的环境。
 - **写入**：首次设置完成、改知识库位置、换引擎、升级（安装脚本第 7 步）时，只重写勾选的位置，没勾选的位置一概不碰。
 - **撤掉**：只有用户在控制台取消勾选时，才撤那个位置里本工具写的 `SKILL.md` 和 `.skill-*` 临时文件；目录清空了才删目录，用户自己的文件保留；`xhs-wiki` 文件夹本身是符号链接时不删。几个位置其实是同一个目录（比如用户把 `~/.agents/skills` 链接到了 `~/.claude/skills`）时按真实目录合并处理，不会装了又删。
-- **检测**：向导和日常页显示"本机有 xx"，只看工具自己建的文件或 App 在不在（`~/.claude.json`、`Claude.app`、`WorkBuddy.app`、`~/WorkBuddy`、`~/.codex`、`~/.cursor`、`~/.gemini`、`~/.copilot` 等），不读内容，也不拿本工具自己会建的 `~/.claude`、`~/.workbuddy`、`~/.agents` 当线索。检测结果只是提示，装不装由用户勾选。
-- **访问授权**：WorkBuddy 只读用户授权过的工作空间，Gemini CLI、Copilot 命令行的文件工具限于当前工作区，所以页面提示用户把知识库文件夹选为工作空间或加进工作区；Skill 第 7 步要求读不到时如实说"读不到知识库"，不说成没收藏过。
+- **检测**：向导和日常页显示"本机有 xx"，只看工具自己建的文件或 App 在不在（`~/.claude.json`、`Claude.app`、`WorkBuddy.app`、`~/WorkBuddy`、`~/.codex`、`~/.cursor`、`~/.gemini/settings.json`、`~/.copilot`、`Trae.app` 等，见 `skill._TOOL_MARKERS`），不读内容，也不拿本工具自己会建的技能目录（`~/.claude`、`~/.trae`、`~/.gemini/config` 这些）当线索。没有可靠线索的工具不显示。检测结果只是提示，装不装由用户勾选。
+- **访问授权**：WorkBuddy 只读用户授权过的工作空间，Gemini CLI、Copilot、Devin Desktop、Antigravity 默认限于当前工作区，CodeBuddy、Kiro、Cline 读工作区外的文件会先问用户，所以页面按工具给出提示（把知识库文件夹选为工作空间、加进工作区或允许访问）；Skill 第 7 步要求读不到时如实说"读不到知识库"，不说成没收藏过。
 
 **描述写法**：说明这是"用户自己的小红书收藏知识库"，触发条件是用户提到"我收藏的 / 我之前存过 / 查一下我的收藏"，或者问题需要结合他收藏过的内容来回答。描述保持通用，不列具体领域。
 

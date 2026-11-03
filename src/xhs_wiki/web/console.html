@@ -842,26 +842,48 @@ function render(data){
 
 /* ============ 提问用的 AI 工具（向导第 6 步和日常页共用） ============ */
 
-/* 三个安装位置的标题和提示。位置名、顺序、检测结果和目录都来自
-   /api/status 的 skill_targets；这里只放给人看的文字。
-   - workbuddy 的提示来自 WorkBuddy 官方文档：它只读用户授权过的工作空间；
-   - agents 是 Codex、Cursor、Gemini CLI、GitHub Copilot 共用的目录，
-     其中 Gemini CLI、Copilot 的文件工具只能访问当前工作区。 */
+/* 各安装位置的标题和提示。位置名、顺序、检测结果和目录都来自
+   /api/status 的 skill_targets；这里只放给人看的文字（依据见 skill.py 的
+   TARGET_DIRS 上方说明）。
+   - workbuddy：WorkBuddy 官方文档说它只读用户授权过的工作空间；
+   - agents：好几个工具共用的目录，其中 Gemini CLI、Copilot、Devin Desktop
+     的文件工具默认只能访问当前工作区；
+   - 前三个以外的位置收在"更多 AI 工具"里（MAIN_SKILL_TARGETS）。 */
 const SKILL_TARGET_TEXT={
-  claude_code:{title:'Claude Code',tip:'Cursor 也会读这个目录。'},
+  claude_code:{title:'Claude Code',tip:'Cursor、OpenCode、Goose、Amp 也会读这个目录。'},
   workbuddy:{title:'WorkBuddy（腾讯）',tip:'WorkBuddy 只读你授权过的文件夹：提问前在输入框下方点「选择工作空间」→「打开本地文件夹」，选知识库文件夹。已经开着的 WorkBuddy 要重开一次才看得到新技能。'},
-  agents:{title:'Codex、Cursor、Gemini CLI、GitHub Copilot',tip:'这几个工具共用同一个技能目录，装一份都能用。Gemini CLI 和 Copilot 只读当前工作区里的文件：在知识库文件夹里打开它们，或者把知识库加进工作区。'},
+  agents:{title:'Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、Qwen Code 等',tip:'这些工具共用同一个技能目录，装一份都能用；新版 Qoder、Zed、Devin Desktop（原 Windsurf）、OpenCode、Goose、Amp、Factory 也读这里。Gemini CLI、Copilot、Devin Desktop 默认只读工作区里的文件：在知识库文件夹里打开它们，或者把知识库加进工作区。'},
+  codebuddy:{title:'CodeBuddy（腾讯）',tip:'读工作目录以外的文件时会先问你，允许就行。'},
+  trae:{title:'Trae（国际版）',tip:'国内版 Trae CN 选下一项。'},
+  trae_cn:{title:'Trae CN（国内版）',tip:'国际版 Trae 选上一项。'},
+  qoder:{title:'Qoder（阿里）',tip:'新版 Qoder 也读上面的共用目录，勾其中一项就够。'},
+  lingma:{title:'Qoder CN（原通义灵码）',tip:'装好后重启一次 IDE 才看得到新技能。'},
+  kiro:{title:'Kiro（AWS）',tip:'读工作区以外的文件时会弹窗请你批准。'},
+  antigravity:{title:'Antigravity（Google）',tip:'默认只能访问工作区：把知识库文件夹作为工作区打开，或在设置里打开 Agent Non-Workspace File Access。'},
+  cline:{title:'Cline',tip:'读工作区以外的文件时会先问你。'},
 };
+/* 一直显示的前三个位置；其余的收进可以展开的"更多 AI 工具"。 */
+const MAIN_SKILL_TARGETS=['claude_code','workbuddy','agents'];
 /* 用户改过、还没保存的勾选（位置名集合）。null 表示没改过：轮询拿到的
    服务端设置直接回填进勾选框；改过以后轮询不再覆盖（同 limitTouched）。 */
 const skillDraft={wizard:null,daily:null};
 const SKILL_BOXES={wizard:'w-skill-targets',daily:'d-skill-targets'};
 
-/* 第一次拿到 skill_targets 时按位置建好三行（之后每次轮询只更新文字和
-   勾选状态，不重建，免得用户正点着的勾选框被换掉）。 */
+/* 第一次拿到 skill_targets 时按位置建好每一行（之后每次轮询只更新文字和
+   勾选状态，不重建，免得用户正点着的勾选框被换掉）。前三个直接放进框里，
+   其余的放进一个 <details>：已经勾选或者本机检测到的时候默认展开。 */
 function buildSkillTargetRows(scope,targets){
   const box=$(SKILL_BOXES[scope]);
   if(box.childElementCount)return;
+  const extra=targets.filter(t=>!MAIN_SKILL_TARGETS.includes(t.id));
+  let more=null;
+  if(extra.length){
+    more=el('details');more.dataset.role='more';
+    more.open=extra.some(t=>t.selected||(t.detected_tools||[]).length);
+    const summary=el('summary','更多 AI 工具（'+extra.length+' 个，各有自己的技能目录）','subtle');
+    summary.style.cursor='pointer';summary.style.margin='10px 0 4px';
+    more.append(summary);
+  }
   for(const t of targets){
     const text=SKILL_TARGET_TEXT[t.id]||{title:t.id,tip:''};
     const row=el('label',undefined,'choice');
@@ -878,8 +900,9 @@ function buildSkillTargetRows(scope,targets){
     const where=el('p');where.dataset.role='path';
     body.append(where);
     row.append(input,body);
-    box.append(row);
+    (MAIN_SKILL_TARGETS.includes(t.id)||!more?box:more).append(row);
   }
+  if(more){box.append(more)}
 }
 /* 当前勾上的位置（按页面顺序）。 */
 function checkedSkillTargets(scope){
@@ -899,9 +922,10 @@ function updateSkillTargetRows(scope,targets){
     input.checked=checked;
     row.classList.toggle('on',checked);
     const tags=row.querySelector('[data-role=tags]');tags.replaceChildren();
+    /* 只在检测到时显示"本机有 xx"。没检测到不写"没有"：好几个工具没有
+       可靠的线索（比如编辑器插件），写"没检测到"反而误导。 */
     const found=t.detected_tools||[];
-    tags.append(document.createTextNode(' '));
-    tags.append(el('span',found.length?'本机有 '+found.join('、'):'本机没检测到',found.length?'tag done':'tag'));
+    if(found.length){tags.append(document.createTextNode(' '));tags.append(el('span','本机有 '+found.join('、'),'tag done'))}
     if(t.installed){tags.append(document.createTextNode(' '));tags.append(el('span','已装好','tag done'))}
     else if(t.selected){tags.append(document.createTextNode(' '));tags.append(el('span','还没装上','tag warn'))}
     row.querySelector('[data-role=path]').textContent='技能装在 '+t.path;

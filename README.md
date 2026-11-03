@@ -26,7 +26,7 @@ Your RedNote saves, finally useful to your AI.
 
 小红书收藏夹越存越多，要用的时候翻不到底；视频里讲的话、图片上的字更是没法搜；问 AI，它又不知道你收藏过什么，只能给通用答案。
 
-**xhs-wiki** 每天自动把你的新收藏下载到本机，在本机识别图片里的文字、把视频里的话转成文字，再交给你选的 AI 模型，整理成按主题组织的知识库（普通的 Markdown 文件，也就是任何编辑器都能直接打开的纯文本笔记）。之后在 Claude Code（Anthropic 的 AI 助手）、腾讯 WorkBuddy、Codex 这类 AI 工具里问到你收藏过的东西，它会调用 xhs-wiki 装好的查询 Skill（写给 AI 的一份查询说明），先查你自己的收藏，再回答并附上出处（来源笔记的标题和链接）；也可以直接说“查一下我的收藏”。
+**xhs-wiki** 每天自动把你的新收藏下载到本机，在本机识别图片里的文字、把视频里的话转成文字，再交给你选的 AI 模型，整理成按主题组织的知识库（普通的 Markdown 文件，也就是任何编辑器都能直接打开的纯文本笔记）。之后在 Claude Code（Anthropic 的 AI 助手）、腾讯 WorkBuddy、Codex、Cursor、Trae 这类 AI 工具里问到你收藏过的东西，它会调用 xhs-wiki 装好的查询 Skill（写给 AI 的一份查询说明），先查你自己的收藏，再回答并附上出处（来源笔记的标题和链接）；也可以直接说“查一下我的收藏”。
 
 这个项目源自作者的自用工作流（那套流程已经把 **1100 多条**小红书收藏整理成个人知识库，每天自动跟进新收藏）。xhs-wiki 是它的开源通用版，作者在全新安装的环境里完整跑通过导入最近 20 条收藏。
 
@@ -61,7 +61,7 @@ Claude：你收藏的做法是 200℃ 先烤 12 分钟，翻面再烤 8 分钟�
 - 已经在用 Claude Code（Anthropic 的 AI 助手）或 Codex（OpenAI 的编程助手命令行，ChatGPT 付费方案里包含），或者愿意开通一个按用量计费的大模型 API（见[整理模型怎么选](#整理模型怎么选)）；
 - 在用 Obsidian 之类的工具搭个人知识库，想把小红书收藏也接进来。
 
-想“问一句就找到”，要在装了查询 Skill 的 AI 工具里提问：默认装进 Claude Code，向导最后一步还能勾选腾讯 WorkBuddy，以及 Codex、Cursor、Gemini CLI、GitHub Copilot（见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)）。不用这些工具，也能用 Obsidian 或任何编辑器翻看整理好的知识库。
+想“问一句就找到”，要在装了查询 Skill 的 AI 工具里提问：默认装进 Claude Code，向导最后一步还能勾选腾讯 WorkBuddy、Codex、Cursor、Trae、CodeBuddy、OpenClaw 等十几个工具（清单和验证情况见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)）。不用这些工具，也能用 Obsidian 或任何编辑器翻看整理好的知识库。
 
 **暂时不适合，如果：**
 
@@ -188,22 +188,28 @@ xhs-wiki 交给你两样东西：一个普通的 Markdown 文件夹，加一个�
 
 **Codex：用你的订阅整理，也能提问**
 
-Codex 是 OpenAI 的编程助手命令行，ChatGPT 付费方案里包含。本机有可用且已登录的 `codex` 命令时，可以在向导里把整理模型选成 Codex，用你现有的订阅。想在 Codex 里提问，在向导最后一步（或控制台的“在哪些 AI 工具里提问”）勾上“Codex、Cursor、Gemini CLI、GitHub Copilot”，查询 Skill 会写进这几个工具共用的 `~/.agents/skills/xhs-wiki/`。作者 2026-11-03 用 codex-cli 0.166 和一个虚构的知识库实测过：Codex 自己找到这个 Skill，先读索引，再读主题页和来源页，回答附出处；没收藏过的会说没有；知识库读不到时会说读不到、请你开放权限，不会说成没收藏过（实测时 Skill 放在测试项目的 `.agents/skills`，和 `~/.agents/skills` 是同一套机制）。选 Codex 整理时的隐私注意事项见[数据与隐私](#数据与隐私)。
+Codex 是 OpenAI 的编程助手命令行，ChatGPT 付费方案里包含。本机有可用且已登录的 `codex` 命令时，可以在向导里把整理模型选成 Codex，用你现有的订阅。想在 Codex 里提问，在向导最后一步（或控制台的“在哪些 AI 工具里提问”）勾上“Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、Qwen Code 等”这一项，查询 Skill 会写进这些工具共用的 `~/.agents/skills/xhs-wiki/`。作者 2026-11-03 用 codex-cli 0.166 和一个虚构的知识库实测过：Codex 自己找到这个 Skill，先读索引，再读主题页和来源页，回答附出处；没收藏过的会说没有；知识库读不到时会说读不到、请你开放权限，不会说成没收藏过（实测时 Skill 放在测试项目的 `.agents/skills`，和 `~/.agents/skills` 是同一套机制）。选 Codex 整理时的隐私注意事项见[数据与隐私](#数据与隐私)。
 
-**其他 AI 工具：勾上就能问**
+**其他 AI 工具：勾上就装好**
 
-SKILL.md 是一种通用格式，下面这些工具都认，区别只在去哪个目录找。在向导最后一步或控制台里勾选，xhs-wiki 就把同一份 Skill 写过去；改了知识库位置或引擎，勾选的工具会一起更新；取消勾选会撤掉本工具写的那份，你自己放的文件不动。页面上的“本机有 xx”只是提示（看的是这些工具的 App 或配置文件夹在不在），装不装由你决定。已经开着的工具重开一次才看得到新 Skill。
+SKILL.md 是一种通用格式，下面这些工具都认，区别只在去哪个目录找。在向导最后一步或控制台里勾选，xhs-wiki 就把同一份 Skill 写过去；改了知识库位置或引擎，勾选的工具会一起更新；取消勾选会撤掉本工具写的那份，你自己放的文件不动。页面上的“本机有 xx”只是提示（看的是这些工具的 App 或配置文件在不在，有的工具没有可靠的线索，就不显示），装不装由你决定。已经开着的工具重开一次才看得到新 Skill。
 
-| 工具 | Skill 写到哪 | 提问前 | 验证情况 |
-|---|---|---|---|
-| Claude Code | `~/.claude/skills/xhs-wiki/` | 直接问 | 实测 |
-| Codex（命令行、IDE 插件、ChatGPT 桌面版） | `~/.agents/skills/xhs-wiki/` | 直接问 | 命令行实测，其余按官方文档 |
-| 腾讯 WorkBuddy | `~/.workbuddy/skills/xhs-wiki/` | WorkBuddy 只读你授权过的文件夹：在输入框下方点“选择工作空间”→“打开本地文件夹”，选知识库文件夹 | 按官方说明和使用资料，还没在真机上试 |
-| Cursor | 它也读 `~/.claude/skills`，勾 Claude Code 就够 | 把知识库文件夹作为工作区打开最稳 | 按官方文档 |
-| Gemini CLI | `~/.agents/skills/xhs-wiki/` | 文件工具只读工作区：在知识库文件夹里启动，或运行 `/directory add ~/XHS-Wiki` | 按官方文档 |
-| GitHub Copilot 命令行 | `~/.agents/skills/xhs-wiki/` | 读当前目录以外的文件要你授权：在知识库文件夹里启动最省事 | 按官方文档 |
+**实测过的只有 Claude Code 和 Codex 命令行**，表里其他工具都是按各家官方文档（2026-11-03 核实）支持的，还没实测。
 
-WorkBuddy 官方文档只写了“上传或新建的技能存在用户配置目录”，`~/.workbuddy/skills` 这个具体位置来自多份使用资料；装好后在 WorkBuddy 的技能列表里没看到 xhs-wiki，可以在对话里直接说“先读一下 `~/.workbuddy/skills/xhs-wiki/SKILL.md`，按里面的步骤查我的收藏”。别的能读本机文件、但不认 Skill 的工具，也可以这样让它先读 `~/.claude/skills/xhs-wiki/SKILL.md`。Skill 里写着：读不到知识库文件夹时，直接告诉你“读不到知识库”，请你授权后再问，不会说成没收藏过。
+| 勾哪一项 | 哪些工具会读 | Skill 写到哪 | 提问前 | 验证情况 |
+|---|---|---|---|---|
+| Claude Code（默认勾上） | Claude Code；Cursor、OpenCode、Goose、Amp 也读这里 | `~/.claude/skills/xhs-wiki/` | 直接问 | Claude Code 实测；其余还没实测 |
+| WorkBuddy | 腾讯 WorkBuddy | `~/.workbuddy/skills/xhs-wiki/` | WorkBuddy 只读你授权过的文件夹：在输入框下方点“选择工作空间”→“打开本地文件夹”，选知识库文件夹 | 还没实测 |
+| Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、Qwen Code 等 | Codex（命令行、IDE 插件、ChatGPT 桌面版）、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi Code、Qwen Code、新版 Qoder、Zed、Devin Desktop（原 Windsurf）、OpenCode、Goose、Amp、Factory Droid | `~/.agents/skills/xhs-wiki/`（这些工具共用） | Gemini CLI、Copilot、Devin Desktop 默认只读工作区：在知识库文件夹里启动，或把知识库加进工作区（Gemini CLI 运行 `/directory add ~/XHS-Wiki`） | Codex 命令行实测；其余还没实测 |
+| CodeBuddy | 腾讯 CodeBuddy | `~/.codebuddy/skills/xhs-wiki/` | 读工作目录以外的文件会先问你 | 还没实测（命令行版目录官方写明，IDE 版是按同一套文档推断的） |
+| Trae / Trae CN | 字节 Trae 国际版 / 国内版 | `~/.trae/skills/xhs-wiki/` / `~/.trae-cn/skills/xhs-wiki/` | 直接问 | 还没实测 |
+| Qoder | 阿里 Qoder | `~/.qoder/skills/xhs-wiki/` | 直接问（新版也读上面的共用目录，勾一项就够） | 还没实测 |
+| Qoder CN（原通义灵码） | Qoder CN、通义灵码 | `~/.lingma/skills/xhs-wiki/` | 装好后重启一次 IDE | 还没实测 |
+| Kiro | AWS Kiro | `~/.kiro/skills/xhs-wiki/` | 读工作区以外的文件会弹窗请你批准 | 还没实测 |
+| Antigravity | Google Antigravity（App、IDE、命令行） | `~/.gemini/config/skills/xhs-wiki/` | 默认只能访问工作区：把知识库文件夹作为工作区打开，或在设置里打开 Agent Non-Workspace File Access | 还没实测 |
+| Cline | Cline | `~/.cline/skills/xhs-wiki/` | 读工作区以外的文件会先问你 | 还没实测 |
+
+WorkBuddy 的产品文档只写了“上传或新建的技能存在用户配置目录”，`~/.workbuddy/skills` 这个具体位置来自腾讯 SkillHub 的安装说明和腾讯官方 GitHub 仓库里的安装代码；装好后在 WorkBuddy 的技能列表里没看到 xhs-wiki，可以在对话里直接说“先读一下 `~/.workbuddy/skills/xhs-wiki/SKILL.md`，按里面的步骤查我的收藏”。别的能读本机文件、但不认 Skill 的工具，也可以这样让它先读 `~/.claude/skills/xhs-wiki/SKILL.md`。Skill 里写着：读不到知识库文件夹时，直接告诉你“读不到知识库”，请你授权后再问，不会说成没收藏过。
 
 **Obsidian：直接打开知识库文件夹**
 
@@ -253,7 +259,7 @@ WorkBuddy 官方文档只写了“上传或新建的技能存在用户配置目�
 | 小红书登录状态 | 上述程序目录中的 `browser-profile/` |
 | 语音模型、下载中的原件 | 上述程序目录中的 `models/`、`work/` |
 | 服务日志 | `~/Library/Logs/xhs-wiki/` |
-| 查询 Skill | Claude Code：`~/.claude/skills/xhs-wiki/SKILL.md`；勾选了才有：WorkBuddy 的 `~/.workbuddy/skills/xhs-wiki/`，Codex 等共用的 `~/.agents/skills/xhs-wiki/` |
+| 查询 Skill | Claude Code：`~/.claude/skills/xhs-wiki/SKILL.md`；勾选了才有：各工具自己的技能目录，比如 WorkBuddy 的 `~/.workbuddy/skills/xhs-wiki/`、Codex 等共用的 `~/.agents/skills/xhs-wiki/`（完整清单见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)） |
 | API 密钥 | macOS 钥匙串 |
 
 ## 风险与声明
@@ -425,7 +431,7 @@ API Key 保存在 **macOS 钥匙串**（系统保存凭据的地方），不写�
 
 ### 没有 Claude Code 能用吗？
 
-能。整理模型可以选 Codex、Anthropic API 或 OpenAI 兼容接口；带出处的提问也不限 Claude Code：在向导最后一步（或控制台的“在哪些 AI 工具里提问”）勾上腾讯 WorkBuddy，或 Codex、Cursor、Gemini CLI、GitHub Copilot，查询 Skill 会写进它们的技能目录，一样先查收藏、附出处、查不到直说（各工具的目录和验证情况见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)）。哪个 AI 工具都不用，知识库照样生成，用 Obsidian 或任何编辑器浏览。Claude Code 的 Skill 在完成首次设置时就写到了 `~/.claude/skills/xhs-wiki/`，以后装了 Claude Code 直接就能用。
+能。整理模型可以选 Codex、Anthropic API 或 OpenAI 兼容接口；带出处的提问也不限 Claude Code：在向导最后一步（或控制台的“在哪些 AI 工具里提问”）勾上腾讯 WorkBuddy、Codex、Cursor、Trae、CodeBuddy、OpenClaw 等工具，查询 Skill 会写进它们的技能目录。实测过的是 Claude Code 和 Codex：先查收藏、附出处、查不到直说；其他工具按官方文档支持，还没实测（清单见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)）。哪个 AI 工具都不用，知识库照样生成，用 Obsidian 或任何编辑器浏览。Claude Code 的 Skill 在完成首次设置时就写到了 `~/.claude/skills/xhs-wiki/`，以后装了 Claude Code 直接就能用。
 
 ### 它会帮我整理小红书 App 里的收藏专辑吗？
 
@@ -475,7 +481,7 @@ API Key 保存在 **macOS 钥匙串**（系统保存凭据的地方），不写�
 
 ### 已经装过类似的收藏查询 Skill，怎么办？
 
-两个 Skill 可能同时响应同一问题，只保留一个。xhs-wiki 的 Skill 默认在 `~/.claude/skills/xhs-wiki/SKILL.md`；勾选了其他工具时，还在 `~/.workbuddy/skills/xhs-wiki/` 或 `~/.agents/skills/xhs-wiki/`。Cursor 两个目录都读，同时勾了 Claude Code 和共用目录时可能看到两份一样的 xhs-wiki，只用 Cursor 的话勾一个就够。
+两个 Skill 可能同时响应同一问题，只保留一个。xhs-wiki 的 Skill 默认在 `~/.claude/skills/xhs-wiki/SKILL.md`；勾选了其他工具时，还在那些工具自己的技能目录里（见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)的表）。有的工具同时读两个目录（比如 Cursor 读 Claude Code 的和共用的，新版 Qoder 读自己的和共用的），两项都勾时可能看到两份一样的 xhs-wiki，勾其中一项就够。
 
 ### 控制台打不开，或者提示“需要验证身份”，怎么办？
 
@@ -550,9 +556,9 @@ bash uninstall.sh
 ## 现状与路线图
 
 - **现在可以用：** 一条命令安装（不需要 Homebrew、git、ffmpeg；国内网络可加 `--mirror cn`）、控制台 6 步向导、每天定时跟进新收藏、本机识别图片文字和转写视频、四种整理模型、轻量 Markdown 引擎、查询 Skill、原件核验后清理。
-- **多个 AI 工具都能提问（v0.3.0 起）：** 查询 Skill 除了 Claude Code，还能勾选装进腾讯 WorkBuddy，以及 Codex、Cursor、Gemini CLI、GitHub Copilot 共用的目录；卸载时一并清理。
+- **多个 AI 工具都能提问（v0.3.0 起）：** 查询 Skill 除了 Claude Code，还能勾选装进腾讯 WorkBuddy、CodeBuddy，字节 Trae，阿里 Qoder、Qoder CN（原通义灵码），AWS Kiro，Google Antigravity，Cline，以及 Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、Qwen Code 等共用的目录；卸载时一并清理。
 - **LLM Wiki 引擎可用（v0.2.0 起）：** 向导按需下载、校验并配置无窗口后台（仅 Apple 芯片，整理模型仅支持 Claude Code 和 Codex），已在真机上跑通导入、Update Wiki、轻量检查和确认；v0.2.1 起整理出的页面固定用简体中文。
-- **目前的限制：** 只支持 macOS 13 或更新版本，Intel 机型和 macOS 13 还没有真机验证（Intel 的自动测试已经通过）；开源版完整跑通过的是导入最近 20 条，几百条以上的大批量导入还没有完整实测过；控制台只有中文界面；查询 Skill 在 Claude Code 和 Codex 命令行里实测过，WorkBuddy、Cursor、Gemini CLI、GitHub Copilot 按官方文档和使用资料支持，还没逐个在真机上试；知识库里的原帖链接在电脑浏览器里打不开（见[原帖链接打不开？](#原帖链接打不开)）。
+- **目前的限制：** 只支持 macOS 13 或更新版本，Intel 机型和 macOS 13 还没有真机验证（Intel 的自动测试已经通过）；开源版完整跑通过的是导入最近 20 条，几百条以上的大批量导入还没有完整实测过；控制台只有中文界面；查询 Skill 只在 Claude Code 和 Codex 命令行里实测过，WorkBuddy 等其他工具按官方文档支持，还没实测；知识库里的原帖链接在电脑浏览器里打不开（见[原帖链接打不开？](#原帖链接打不开)）。
 
 每个版本改了什么，见 [CHANGELOG.md](CHANGELOG.md)。
 

@@ -31,9 +31,15 @@ import pytest
 from test_daemon import FAKE_PROFILE_URL, DaemonTestBase
 from test_install_real_run import INSTALL_SH, UNINSTALL_SH, ScriptSandbox
 from xhs_wiki import skill
-from xhs_wiki.store import DEFAULT_SETTINGS, ServiceStore
+from xhs_wiki.store import DEFAULT_SETTINGS, SKILL_TARGETS, ServiceStore
 
-TARGETS = ("claude_code", "workbuddy", "agents")
+# 全部安装位置（顺序同页面）。
+TARGETS = SKILL_TARGETS
+
+
+def outcomes(**codes) -> dict:
+    """sync 的完整结果：没写到的位置都是 unchanged（没勾选、这次也没要求撤）。"""
+    return {target: codes.get(target, "unchanged") for target in TARGETS}
 
 
 def make_settings(kb_root, targets, **extra) -> dict:
@@ -140,8 +146,7 @@ class TestSync(unittest.TestCase):
         user_copy.mkdir(parents=True)
         (user_copy / "SKILL.md").write_text("用户自己的副本", encoding="utf-8")
         results = skill.sync(make_settings(self.kb, ["claude_code"]), roots=self.roots)
-        self.assertEqual(results, {"claude_code": "installed",
-                                   "workbuddy": "unchanged", "agents": "unchanged"})
+        self.assertEqual(results, outcomes(claude_code="installed"))
         self.assertEqual((user_copy / "SKILL.md").read_text(encoding="utf-8"), "用户自己的副本")
         self.assertFalse(self.roots["agents"].exists())
 
@@ -199,8 +204,7 @@ class TestSync(unittest.TestCase):
     def test_one_failure_does_not_block_others(self):
         self.roots["workbuddy"].write_text("我是一个文件，不是目录", encoding="utf-8")
         results = skill.sync(make_settings(self.kb, TARGETS), roots=self.roots)
-        self.assertEqual(results, {"claude_code": "installed", "workbuddy": "failed",
-                                   "agents": "installed"})
+        self.assertEqual(results, {**dict.fromkeys(TARGETS, "installed"), "workbuddy": "failed"})
 
     def test_invalid_kb_root_writes_nothing(self):
         """知识库路径里混进换行（等于往 Skill 里塞指令）：哪个位置都不写。"""
@@ -249,6 +253,7 @@ class TestDetect(unittest.TestCase):
     def test_detects_config_folders_and_apps(self):
         (self.home / ".codex").mkdir()
         (self.home / ".gemini").mkdir()
+        (self.home / ".gemini" / "settings.json").write_text("{}", encoding="utf-8")
         (self.home / "Applications" / "WorkBuddy.app").mkdir(parents=True)
         (self.home / "Applications" / "Cursor.app").mkdir()
         (self.home / ".claude.json").write_text("{}", encoding="utf-8")
@@ -263,11 +268,12 @@ class TestDetect(unittest.TestCase):
     def test_our_own_skill_dirs_do_not_count(self):
         """本工具写 Skill 时建出的 ~/.claude、~/.workbuddy、~/.agents 不算检测到：
         否则没装这些工具的人完成设置后，也会看到"本机有 Claude Code"。"""
-        roots = {"claude_code": self.home / ".claude" / "skills",
-                 "workbuddy": self.home / ".workbuddy" / "skills",
-                 "agents": self.home / ".agents" / "skills"}
-        skill.sync(make_settings(Path(self.tmp.name) / "kb", TARGETS), roots=roots)
+        # 每个位置都装一遍（目录按 skill.TARGET_DIRS 建在假主目录下）。
+        roots = {target: self.home / skill.TARGET_DIRS[target] for target in TARGETS}
+        results = skill.sync(make_settings(Path(self.tmp.name) / "kb", TARGETS), roots=roots)
+        self.assertEqual(results, dict.fromkeys(TARGETS, "installed"))
         self.assertTrue((self.home / ".claude" / "skills" / "xhs-wiki" / "SKILL.md").is_file())
+        self.assertTrue((self.home / ".gemini" / "config" / "skills" / "xhs-wiki" / "SKILL.md").is_file())
         self.assertEqual(skill.detect_tools(home=self.home), [])
 
     def test_only_checks_existence(self):
@@ -344,8 +350,7 @@ class TestSkillTargetsApi(DaemonTestBase):
         status, data = self.post("/api/skill-targets",
                                  body={"targets": ["claude_code", "workbuddy"]})
         self.assertEqual(status, 200, data)
-        self.assertEqual(data["results"], {"claude_code": "installed",
-                                           "workbuddy": "installed", "agents": "unchanged"})
+        self.assertEqual(data["results"], outcomes(claude_code="installed", workbuddy="installed"))
         self.assertEqual(self.store.load_settings()["skill_targets"],
                          ["claude_code", "workbuddy"])
         self.assertTrue(self.skill_file("workbuddy").is_file())
@@ -488,20 +493,61 @@ def test_uninstall_refuses_symlinked_extra_skill_dir(sandbox):
     assert sandbox.snapshot() == before
 
 
+def test_uninstall_skill_dir_list_matches_python(sandbox):
+    """uninstall.sh 的 EXTRA_SKILL_DIRS 必须和 skill.TARGET_DIRS 一致：
+    以后加了新的 AI 工具、卸载脚本忘了加，卸载就会漏删那个目录。"""
+    text = UNINSTALL_SH.read_text(encoding="utf-8")
+    listed = re.search(r"^EXTRA_SKILL_DIRS=\((.*)\)$", text, re.M).group(1)
+    shell_dirs = re.findall(r'"([^"]+)"', listed)
+    expected = [skill.TARGET_DIRS[t] for t in TARGETS if t != "claude_code"]
+    assert shell_dirs == expected
+    assert skill.TARGET_DIRS["claude_code"] == ".claude/skills"
+
+
+def test_uninstall_honours_tools_home(sandbox):
+    """XHS_WIKI_TOOLS_HOME 指到别处时，卸载清的是那里的技能目录。"""
+    sandbox.mark_app()
+    tools_home = sandbox.home / "tools home"
+    folder = tools_home / ".workbuddy" / "skills" / "xhs-wiki"
+    folder.mkdir(parents=True)
+    (folder / "SKILL.md").write_text("generated skill", encoding="utf-8")
+    real_default = sandbox.home / ".workbuddy" / "skills" / "xhs-wiki"
+    real_default.mkdir(parents=True)
+    (real_default / "SKILL.md").write_text("不该被删", encoding="utf-8")
+    sandbox.env["XHS_WIKI_TOOLS_HOME"] = str(tools_home)
+    result = sandbox.run(UNINSTALL_SH, "--yes")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not folder.exists()
+    assert (real_default / "SKILL.md").read_text(encoding="utf-8") == "不该被删"
+
+
 def test_install_refreshes_selected_tools_and_passes_env_to_service(sandbox):
-    """升级时把控制台里勾选过的工具一起更新；改写过的目录写进后台服务的环境。"""
+    """升级时把控制台里勾选过的工具一起更新；默认的 AI 工具主目录就是 HOME，
+    也写进后台服务的环境。"""
     sandbox.mark_app(skill_targets=["claude_code", "workbuddy"])
-    custom_agents = sandbox.home / "custom agents"
-    sandbox.env["XHS_WIKI_AGENTS_SKILLS_ROOT"] = str(custom_agents)
     result = sandbox.run(INSTALL_SH, "--yes")
     assert result.returncode == 0, result.stdout + result.stderr
     assert (sandbox.skills / "xhs-wiki" / "SKILL.md").is_file()
     assert (sandbox.home / ".workbuddy" / "skills" / "xhs-wiki" / "SKILL.md").is_file()
-    assert not custom_agents.exists()          # 没勾选：不建目录
+    assert not (sandbox.home / ".agents").exists()          # 没勾选：不建目录
     plist = sandbox.home / "Library/LaunchAgents/io.github.xhs-wiki.service.plist"
     environment = plistlib.loads(plist.read_bytes())["EnvironmentVariables"]
-    assert environment["XHS_WIKI_WORKBUDDY_SKILLS_ROOT"] == str(sandbox.home / ".workbuddy" / "skills")
-    assert environment["XHS_WIKI_AGENTS_SKILLS_ROOT"] == str(custom_agents)
+    assert environment["XHS_WIKI_TOOLS_HOME"] == str(sandbox.home)
+
+
+def test_install_tools_home_override_reaches_service(sandbox):
+    """隔离安装：XHS_WIKI_TOOLS_HOME 指到测试目录时，勾选的工具写进那里，
+    后台服务的环境里也是那个目录，真实主目录下什么都不建。"""
+    sandbox.mark_app(skill_targets=["claude_code", "agents"])
+    tools_home = sandbox.home / "custom tools"
+    sandbox.env["XHS_WIKI_TOOLS_HOME"] = str(tools_home)
+    result = sandbox.run(INSTALL_SH, "--yes")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tools_home / ".agents" / "skills" / "xhs-wiki" / "SKILL.md").is_file()
+    assert not (sandbox.home / ".agents").exists()
+    plist = sandbox.home / "Library/LaunchAgents/io.github.xhs-wiki.service.plist"
+    environment = plistlib.loads(plist.read_bytes())["EnvironmentVariables"]
+    assert environment["XHS_WIKI_TOOLS_HOME"] == str(tools_home)
 
 
 def test_install_without_claude_code_still_refreshes_other_tools(sandbox):

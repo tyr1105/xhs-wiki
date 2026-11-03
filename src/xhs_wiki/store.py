@@ -80,13 +80,19 @@ ENGINES = ("markdown", "llmwiki")
 ASR_MODELS = ("sensevoice", "whisper")
 
 # 查询 Skill 可以装进的"安装位置"。每个位置是一个技能目录，同一个目录
-# 被几个 AI 工具共用时只算一个位置（目录和依据见 skill.py 的 TARGET_ROOTS）：
+# 被几个 AI 工具共用时只算一个位置（目录和依据见 skill.py 的 TARGET_DIRS）：
 # - claude_code：Claude Code 的 ~/.claude/skills；
 # - workbuddy：腾讯 WorkBuddy 的 ~/.workbuddy/skills；
-# - agents：Codex、Cursor、Gemini CLI、GitHub Copilot 共用的 ~/.agents/skills。
-# 放在这里（而不是 skill.py）是因为设置校验要用它，skill.py 反过来要
-# 导入本模块；写在一处，两边永远一致。
-SKILL_TARGETS = ("claude_code", "workbuddy", "agents")
+# - agents：Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、
+#   Qwen Code 等共用的 ~/.agents/skills；
+# - 后面几个是各自单独有目录的工具（控制台里收在"更多 AI 工具"下面）：
+#   codebuddy、trae（国际版）、trae_cn（国内版）、qoder、lingma（Qoder CN，
+#   原通义灵码）、kiro、antigravity、cline。
+# 顺序就是页面上的显示顺序。放在这里（而不是 skill.py）是因为设置校验
+# 要用它，skill.py 反过来要导入本模块；写在一处，两边永远一致。
+SKILL_TARGETS = ("claude_code", "workbuddy", "agents",
+                 "codebuddy", "trae", "trae_cn", "qoder", "lingma",
+                 "kiro", "antigravity", "cline")
 
 # 设置文件的默认值（docs/architecture.md §7）。
 # 注意：profile_url 默认 null——登录成功后由扫描模块把主页链接写进来。
