@@ -79,6 +79,15 @@ ENGINES = ("markdown", "llmwiki")
 # 语音识别模型：两个候选都允许（取舍见 docs/architecture.md §5）。
 ASR_MODELS = ("sensevoice", "whisper")
 
+# 查询 Skill 可以装进的"安装位置"。每个位置是一个技能目录，同一个目录
+# 被几个 AI 工具共用时只算一个位置（目录和依据见 skill.py 的 TARGET_ROOTS）：
+# - claude_code：Claude Code 的 ~/.claude/skills；
+# - workbuddy：腾讯 WorkBuddy 的 ~/.workbuddy/skills；
+# - agents：Codex、Cursor、Gemini CLI、GitHub Copilot 共用的 ~/.agents/skills。
+# 放在这里（而不是 skill.py）是因为设置校验要用它，skill.py 反过来要
+# 导入本模块；写在一处，两边永远一致。
+SKILL_TARGETS = ("claude_code", "workbuddy", "agents")
+
 # 设置文件的默认值（docs/architecture.md §7）。
 # 注意：profile_url 默认 null——登录成功后由扫描模块把主页链接写进来。
 # asr_model 默认 whisper，与安装脚本默认下载的语音模型一致。
@@ -104,6 +113,10 @@ DEFAULT_SETTINGS = {
     # 首次导入最多处理多少条旧收藏（首次可能积累了几千条，先小范围试）。
     "first_import_limit": 20,
     "setup_completed": False,
+    # 查询 Skill 装进哪些 AI 工具（SKILL_TARGETS 里的位置）。默认只装
+    # Claude Code——和加这项设置之前的行为一样；别的工具由用户在向导或
+    # 日常页勾选。空列表也合法：用户选了"哪个工具都不装"。
+    "skill_targets": ["claude_code"],
 }
 
 # 控制台（网页）只允许改这几项设置，其余只读（如 headless、schema_version）。
@@ -120,6 +133,7 @@ EDITABLE_SETTINGS_FIELDS = (
     "first_import_limit",
     "setup_completed",
     "profile_url",
+    "skill_targets",
 )
 
 # 校验设置用的正则：时间是 00:00–23:59；主页链接是 24 位十六进制编号；
@@ -505,6 +519,15 @@ def validate_settings(value: dict) -> dict:
         # 其他 provider 用不上 base_url，出现非 null 值多半是配置写错了。
         raise ValueError("base_url_not_allowed")
 
+    # skill_targets：列表，每一项都必须是已知的安装位置，不能重复。
+    # 这份列表决定往哪些目录写文件、从哪些目录删文件（skill.sync），
+    # 所以只认 SKILL_TARGETS 里的固定名字，绝不接受路径之类的自由文本。
+    targets = value.get("skill_targets")
+    if (not isinstance(targets, list)
+            or any(not isinstance(t, str) or t not in SKILL_TARGETS for t in targets)
+            or len(set(targets)) != len(targets)):
+        raise ValueError("skill_targets_invalid")
+
     # schema_version 目前固定为 1。
     if value.get("schema_version") != 1:
         raise ValueError("schema_version_invalid")
@@ -680,7 +703,9 @@ class ServiceStore:
         if isinstance(settings.get("llm"), dict):
             settings["llm"] = {k: v for k, v in settings["llm"].items()
                                if k in ("provider", "model", "base_url")}
-        return {**DEFAULT_SETTINGS, **settings}
+        # 补齐用的默认值同样先深拷贝：skill_targets 是列表，旧设置文件
+        # 没有这个键时，直接用模块级的默认列表，调用方一改就把默认值改坏了。
+        return {**json.loads(json.dumps(DEFAULT_SETTINGS)), **settings}
 
     def update_settings(self, changes: dict) -> dict:
         """修改设置（只允许白名单里的字段）。

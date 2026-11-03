@@ -107,6 +107,19 @@ class TestRender(unittest.TestCase):
             "4. 需要细节时，顺着主题页里的链接读来源页（`来源/` 目录）；\n",
             text)
 
+    def test_render_tells_unreadable_apart_from_not_collected(self):
+        """读不到知识库（没权限、不在工作区）时要说读不到，不能说成没收藏过。
+
+        WorkBuddy、Gemini CLI 这类工具只能访问授权过的文件夹；以前查询步骤
+        只有"找不到就说没有收藏过"，读不到文件时 AI 会把收藏过的内容答成
+        没有。
+        """
+        for engine in ("markdown", "llmwiki"):
+            text = skill.render(fake_settings(engine=engine))
+            self.assertIn("读不到知识库", text, engine)
+            self.assertIn("加进工作区或允许访问", text, engine)
+            self.assertIn('不要说成"没有收藏过"', text, engine)
+
     def test_render_leaves_no_placeholder(self):
         """两种引擎、设置完成与否，渲染结果里都不能残留 {{…}} 占位符。"""
         for engine in ("markdown", "llmwiki"):
@@ -221,18 +234,30 @@ class TestDaemonSync(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
 
     def _server_stub(self, skills_root):
-        # sync_skill 只用到 self.skills_root；用 SimpleNamespace 代替
-        # 真实 ServiceServer，避免绑定端口。
+        # sync_skill 只用到 Skill 目录（skills_root、skill_roots 和据此算目录的
+        # skill_target_roots）和写入锁；用 SimpleNamespace 代替真实
+        # ServiceServer，避免绑定端口。其他工具的目录也指到临时目录。
+        import threading
         import types
         from xhs_wiki import daemon
-        return daemon.ServiceServer.sync_skill.__get__(
-            types.SimpleNamespace(skills_root=skills_root))
+        stub = types.SimpleNamespace(
+            skills_root=skills_root,
+            skill_roots={"workbuddy": Path(self.tmp.name) / "wb",
+                         "agents": Path(self.tmp.name) / "agents"},
+            _skill_lock=threading.RLock())
+        stub.skill_target_roots = daemon.ServiceServer.skill_target_roots.__get__(stub)
+        return daemon.ServiceServer.sync_skill.__get__(stub)
 
     def test_sync_skill_writes_file(self):
         sync = self._server_stub(Path(self.tmp.name) / "skills")
-        sync(fake_settings())
+        results = sync(fake_settings())
         target = Path(self.tmp.name) / "skills" / "xhs-wiki" / "SKILL.md"
         self.assertTrue(target.is_file())
+        # 半份设置里没有 skill_targets：按默认只装 Claude Code，别的工具不碰。
+        self.assertEqual(results, {"claude_code": "installed",
+                                   "workbuddy": "unchanged", "agents": "unchanged"})
+        self.assertFalse((Path(self.tmp.name) / "wb").exists())
+        self.assertFalse((Path(self.tmp.name) / "agents").exists())
 
     def test_sync_skill_swallows_errors(self):
         # skills_root 指到一个文件：install 必然失败，sync 不能抛出去

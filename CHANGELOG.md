@@ -2,6 +2,23 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-11-03
+
+### 新增
+- 查询 Skill 不只装进 Claude Code：首次向导多了第 6 步“在哪些 AI 工具里提问”，控制台日常页也有同一组勾选框，可以把同一份 Skill 装进腾讯 WorkBuddy（`~/.workbuddy/skills/xhs-wiki/`），以及 Codex、Cursor、Gemini CLI、GitHub Copilot 共用的 `~/.agents/skills/xhs-wiki/`。默认只勾 Claude Code，和以前一样。
+- 页面上显示“本机有 xx”：只看这些工具的 App 或配置文件夹在不在，不读内容，也不拿本工具自己建的技能目录当线索；装不装由你勾选。
+- Skill 多了一步：读不到知识库文件夹（没有权限，或者工具只能访问工作区）时，如实说“读不到知识库”并请你授权，不说成“没有收藏过”。WorkBuddy、Gemini CLI 这类只读授权文件夹的工具，页面上写了提问前要怎么授权。
+
+### 变更
+- 改知识库位置、换引擎、完成设置、升级时，所有勾选的工具一起更新；没勾选的位置不碰。只有在控制台取消勾选时，才撤掉那个位置里本工具写的 `SKILL.md`，你自己放的文件保留，链接到别处的文件夹不跟着删。
+- 卸载时三个技能目录都检查、只删本工具的文件；其中任何一个是符号链接、指向受保护目录或包含知识库时，整个卸载先停下，不删任何东西。
+- 安装脚本把 `XHS_WIKI_WORKBUDDY_SKILLS_ROOT`、`XHS_WIKI_AGENTS_SKILLS_ROOT` 和原有的 `XHS_WIKI_SKILLS_ROOT` 一起写进后台服务的环境，隔离测试时都能指到测试目录。
+- `skill.uninstall` 改成只删本工具写的文件（以前会删掉整个 `xhs-wiki` 文件夹）。
+
+### 说明
+- 验证情况：Claude Code 和 Codex 命令行实测过。Codex 用 codex-cli 0.166 和虚构知识库测了三种情况：收藏过的会先读索引、主题页、来源页再回答并附出处；没收藏过的说没有；知识库读不到时说读不到。WorkBuddy、Cursor、Gemini CLI、GitHub Copilot 按各家官方文档支持；WorkBuddy 官方只写了“用户配置目录”，`~/.workbuddy/skills` 这个位置来自多份使用资料，还没在真机上试。
+- 已经在用的：重新运行安装命令升级后，设置里会多出“提问用的 AI 工具”这一项，默认只有 Claude Code；想装进别的工具，在控制台日常页勾选后点保存。
+
 ## [0.2.2] - 2026-11-03
 
 ### 修复

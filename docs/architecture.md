@@ -188,12 +188,15 @@ KB_ROOT/
  "download_retry_every_days": 7, "profile_url": null, "headless": true, "cleanup_enabled": true,
  "kb_root": "~/XHS-Wiki", "engine": "markdown",
  "llm": {"provider": "claude_code", "model": "claude-haiku-5-5", "base_url": null},
- "asr_model": "whisper", "first_import_limit": 20, "setup_completed": false, "llmwiki_binary": null}
+ "asr_model": "whisper", "first_import_limit": 20, "setup_completed": false, "llmwiki_binary": null,
+ "skill_targets": ["claude_code"]}
 ```
+
+- `skill_targets`：查询 Skill 装进哪些 AI 工具（§12 的三个安装位置 `claude_code`、`workbuddy`、`agents`），默认只有 Claude Code。只接受这三个固定名字、不能重复，可以为空列表；旧设置文件没有这个键时读出默认值。只能经 `/api/skill-targets`（向导第 6 步和日常页）修改。
 
 - `first_import_limit`：首次导入范围。整数 N 只在**第一次成功扫描**时生效：当时排在第 N 位以后的旧收藏标记为 `skipped`，之后新收藏的笔记不受限制；`null` 表示全部收藏。改成 `null` 后，之前跳过的旧收藏会在下次运行时重新排队。
 - `llmwiki_binary`：LLM Wiki 后台程序的绝对路径（§6.2），下载并校验完成后由守护进程或 `assets install-llmwiki` 命令自动写入；控制台接口仍不接受这个字段。
-- 控制台日常页只能修改定时、每次条数、清理开关、语音模型和模型名；其余字段只能通过首次设置向导写入。
+- 控制台日常页的设置接口只能修改定时、每次条数、清理开关、语音模型和模型名；提问用的 AI 工具走专用接口（改完立即同步 Skill）；其余字段只能通过首次设置向导写入。
 - API Key **不进** `settings.json`，存进 macOS 钥匙串：服务名 `xhs-wiki`，账户名为提供方名称。用系统自带的 `security` 命令读写，命令行参数里不出现 Key 本身（通过标准输入传入）。
 
 ## 8. 模型调用 `llm/`
@@ -256,13 +259,27 @@ for stage in [download, parse, ingest, distill]:
 - **接口白名单**：日常设置接口只接受定时、条数、清理、语音模型和模型名；知识库位置只能经向导设置，并校验是不是普通的绝对路径目录（不能是程序包、磁盘根目录、主目录本身、"文稿""桌面"这类系统文件夹本身或系统目录，不能含控制字符和格式字符）。
 - **连接限制**：每个连接有 10 秒读写超时，同时处理的连接数有上限，防止同机程序靠空闲连接占满服务。
 - 定时、补跑、追加运行；扫码子进程。
-- **首次向导**：`setup_completed=false` 时显示。依次是知识库位置 → 引擎 → 模型（选择后测试调用）→ 扫码 → 首次导入范围；日常页的"重新设置"可以重走向导。在向导里改知识库位置时，已有内容会移动到新位置：旧目录里只有本工具生成的内容时整个目录移动，还有用户自己的文件时只移动五类生成内容；同一块磁盘上直接改名，跨磁盘时先完整复制并核对、再删除原件。
+- **首次向导**：`setup_completed=false` 时显示。依次是知识库位置 → 引擎 → 模型（选择后测试调用）→ 扫码 → 首次导入范围 → 提问用的 AI 工具（§12，默认只勾 Claude Code；日常页也有同一组勾选框）；日常页的"重新设置"可以重走向导。在向导里改知识库位置时，已有内容会移动到新位置：旧目录里只有本工具生成的内容时整个目录移动，还有用户自己的文件时只移动五类生成内容；同一块磁盘上直接改名，跨磁盘时先完整复制并核对、再删除原件。
 - 知识库统计（主题数、来源数、暂缓数）；失败笔记单条重试；
 - "打开知识库文件夹"按钮：用 `/usr/bin/open -R` 在访达里选中知识库目录，不会启动任何程序。
 
 ## 12. Skill `skill/SKILL.md.tmpl`
 
-安装时渲染到 `~/.claude/skills/xhs-wiki/SKILL.md`，填入 `KB_ROOT`、引擎类型，以及当前引擎 `skill_context()` 给出的索引、主题页、来源页位置：轻量引擎是 `索引.md`、`主题/`、`来源/`，LLM Wiki 引擎是 `wiki/index.md`、`wiki/`、`wiki/sources/`。
+渲染时填入 `KB_ROOT`、引擎类型，以及当前引擎 `skill_context()` 给出的索引、主题页、来源页位置：轻量引擎是 `索引.md`、`主题/`、`来源/`，LLM Wiki 引擎是 `wiki/index.md`、`wiki/`、`wiki/sources/`。
+
+**装进哪些 AI 工具**：SKILL.md 是开放的 Agent Skills 格式（一个文件夹，放带 `name`、`description` 的 Markdown），各家只是去不同目录找。同一份渲染结果写到设置 `skill_targets` 勾选的位置（`skill.py` 的 `TARGET_ROOTS`）：
+
+| 位置 | 目录 | 哪些工具读（2026-11 核实） |
+|---|---|---|
+| `claude_code`（默认） | `~/.claude/skills/xhs-wiki/` | Claude Code；Cursor 为了兼容也读 |
+| `workbuddy` | `~/.workbuddy/skills/xhs-wiki/` | 腾讯 WorkBuddy（官方文档只写"用户配置目录"，具体路径来自多份使用资料） |
+| `agents` | `~/.agents/skills/xhs-wiki/` | OpenAI Codex（命令行、IDE 插件、ChatGPT 桌面版）、Cursor、Gemini CLI、GitHub Copilot 命令行 |
+
+- 每个目录都能用环境变量改写（`XHS_WIKI_SKILLS_ROOT`、`XHS_WIKI_WORKBUDDY_SKILLS_ROOT`、`XHS_WIKI_AGENTS_SKILLS_ROOT`），隔离测试时指到测试目录，安装脚本会把它们写进后台服务的环境。
+- **写入**：首次设置完成、改知识库位置、换引擎、升级（安装脚本第 7 步）时，只重写勾选的位置，没勾选的位置一概不碰。
+- **撤掉**：只有用户在控制台取消勾选时，才撤那个位置里本工具写的 `SKILL.md` 和 `.skill-*` 临时文件；目录清空了才删目录，用户自己的文件保留；`xhs-wiki` 文件夹本身是符号链接时不删。几个位置其实是同一个目录（比如用户把 `~/.agents/skills` 链接到了 `~/.claude/skills`）时按真实目录合并处理，不会装了又删。
+- **检测**：向导和日常页显示"本机有 xx"，只看工具自己建的文件或 App 在不在（`~/.claude.json`、`Claude.app`、`WorkBuddy.app`、`~/WorkBuddy`、`~/.codex`、`~/.cursor`、`~/.gemini`、`~/.copilot` 等），不读内容，也不拿本工具自己会建的 `~/.claude`、`~/.workbuddy`、`~/.agents` 当线索。检测结果只是提示，装不装由用户勾选。
+- **访问授权**：WorkBuddy 只读用户授权过的工作空间，Gemini CLI、Copilot 命令行的文件工具限于当前工作区，所以页面提示用户把知识库文件夹选为工作空间或加进工作区；Skill 第 7 步要求读不到时如实说"读不到知识库"，不说成没收藏过。
 
 **描述写法**：说明这是"用户自己的小红书收藏知识库"，触发条件是用户提到"我收藏的 / 我之前存过 / 查一下我的收藏"，或者问题需要结合他收藏过的内容来回答。描述保持通用，不列具体领域。
 
@@ -272,7 +289,8 @@ for stage in [download, parse, ingest, distill]:
 3. 索引里找不到合适的主题时，在来源页目录里按关键词搜索；
 4. 需要细节时，顺着链接读来源页；
 5. 回答时附上来源页标题和小红书原链接；
-6. 找不到就如实说没收藏过。
+6. 找不到就如实说没收藏过；
+7. 读不到知识库文件（没权限、不在工作区）时说读不到，请用户授权后再问，不说成没收藏过。
 
 **安全提示**：知识库内容是第三方帖子的摘录。Skill 明确要求 AI 只把它当资料引用，不能当成指令执行，以防帖子里的文字被用来做提示注入。
 
@@ -285,12 +303,12 @@ for stage in [download, parse, ingest, distill]:
   4. 在 `APP_HOME/venv` 里装好 Python 3.12 和本项目。远程安装直接下载 GitHub 的源码压缩包（`archive/refs/heads/main.tar.gz`），不需要 git；重型依赖只用预编译包（`--only-binary`），让安装器自动选出兼容当前 macOS 版本和芯片的版本；
   5. 启动服务并打开控制台：征得同意后写入 LaunchAgent（写 plist 时把当前的 PATH、代理和镜像设置一起写进去；工作目录和日志不放 `~/Documents`），否则用 nohup 启动临时服务；然后运行 `xhs-wiki open`；
   6. XHS-Downloader 和语音模型交给服务在后台下载（按固定 SHA-256 核对），脚本不等待；LLM Wiki 无窗口后台仅在选择该引擎时按需下载，也可用 `xhs-wiki assets install-llmwiki` 下载；其压缩包和程序本体分别校验固定 SHA-256，通过后自动配置路径；
-  7. 渲染 Skill；
+  7. 渲染 Skill，写进设置里勾选的位置（默认只有 Claude Code；升级时顺带更新勾选过的其他工具；没检测到 Claude Code 时跳过它的目录）；
   8. 建立命令链接 `~/.local/bin/xhs-wiki`；
   9. 结束提示。
 
   不需要 Homebrew、ffmpeg、git 或 Xcode 命令行工具。`--mirror cn` 会把 Python 包、Python 安装包和语音模型的下载切到国内镜像（阿里云 PyPI、npmmirror、hf-mirror），后台服务也沿用；安装脚本本身和源码包仍从 GitHub 下载。
-- **卸载**：`uninstall.sh` 停止服务（LaunchAgent 和临时服务都会停掉），删除 LaunchAgent、`APP_HOME`、日志和 Skill；**知识库默认保留**。必须同时加上 `--yes` 和 `--purge-kb` 才清理知识库，而且只删本工具生成的文件（索引、主题、来源、暂缓页和 `.xhs-wiki/`），目录里没有 `.xhs-wiki/` 标记时拒绝删除。日志目录和 Skill 目录也只删本工具的文件，目录清空后才删除目录本身。
+- **卸载**：`uninstall.sh` 停止服务（LaunchAgent 和临时服务都会停掉），删除 LaunchAgent、`APP_HOME`、日志和 Skill；**知识库默认保留**。必须同时加上 `--yes` 和 `--purge-kb` 才清理知识库，而且只删本工具生成的文件（索引、主题、来源、暂缓页和 `.xhs-wiki/`），目录里没有 `.xhs-wiki/` 标记时拒绝删除。日志目录和 Skill 目录也只删本工具的文件，目录清空后才删除目录本身；三个 Skill 位置（§12）都会检查，任何一个是符号链接、指向受保护目录或包含知识库时整个卸载先停下。
 
 ## 14. 测试和质量门
 

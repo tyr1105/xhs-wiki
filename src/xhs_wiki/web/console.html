@@ -229,6 +229,19 @@ footer{margin-top:22px;color:var(--muted);font-size:12px;display:flex;justify-co
   </div>
 </section>
 
+<!-- 5a. 提问用的 AI 工具（和向导第 6 步是同一组勾选框） -->
+<section class="paper" aria-label="提问用的 AI 工具">
+  <div class="body">
+    <h2>在哪些 AI 工具里提问</h2>
+    <p class="subtle">勾上的工具会装好查询技能（问一句先翻收藏、附出处、查不到直说）；取消勾选会撤掉本工具写进去的技能文件，你自己放的文件不动。</p>
+    <div id="d-skill-targets"></div>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
+      <button class="primary" id="d-skill-save">保存</button>
+      <span class="hint" id="d-skill-hint"></span>
+    </div>
+  </div>
+</section>
+
 <!-- 5b. 语音转写设置 -->
 <section class="paper" aria-label="语音转写设置">
   <div class="body">
@@ -360,6 +373,15 @@ footer{margin-top:22px;color:var(--muted);font-size:12px;display:flex;justify-co
     </div>
     <div class="warnbox hidden" id="w-limit-all-warn">全部整理需要较长时间，并会占用模型额度（调用次数按收藏数量增加）。</div>
     <p class="hint" id="w5-hint"></p>
+  </div>
+
+  <!-- 第 6 步：提问用的 AI 工具。三行勾选框由脚本按 /api/status 的
+       skill_targets 生成（见 buildSkillTargetRows），默认只勾 Claude Code -->
+  <div id="w6" class="hidden">
+    <h2>第 6 步 · 在哪些 AI 工具里提问</h2>
+    <p class="subtle">知识库是普通的 Markdown 文件，能读本机文件的 AI 工具都能查。勾上的工具会装好查询技能：你问一句，它先翻你的收藏，回答附上出处，查不到会直说。之后也能在控制台里改。</p>
+    <div id="w-skill-targets"></div>
+    <p class="hint" id="w6-hint"></p>
   </div>
 
   <!-- 完成按钮 -->
@@ -511,6 +533,7 @@ const CODE_LABELS={
   kb_root_inside_app_home:'知识库不能放在程序自己的数据目录里',
   kb_root_contains_app_home:'这个文件夹里包含程序自己的数据目录，请换一个文件夹',
   kb_root_not_writable:'这个位置不可写，请换一个文件夹',
+  skill_targets_invalid:'要装进的 AI 工具不认识，请刷新页面再试',
   /* 换知识库位置时搬移旧内容（有用户文件时只搬生成内容） */
   kb_root_target_not_empty:'新位置里已经有文件了：请选一个空文件夹（或还不存在的文件夹），原来的知识库内容会搬过去',
   kb_root_inside_old_kb:'新位置不能放在原来的知识库文件夹里面，请换一个位置',
@@ -813,7 +836,89 @@ function render(data){
   /* 语音转写模型回填；API 类提供方提示"换 Key 请点重新设置"。 */
   if(document.activeElement!==$('asr-model')){$('asr-model').value=s.asr_model||'whisper'}
   updateEngineKeyTip();
+  updateSkillTargetRows('daily',data.skill_targets);
   renderRuns(data.runs);
+}
+
+/* ============ 提问用的 AI 工具（向导第 6 步和日常页共用） ============ */
+
+/* 三个安装位置的标题和提示。位置名、顺序、检测结果和目录都来自
+   /api/status 的 skill_targets；这里只放给人看的文字。
+   - workbuddy 的提示来自 WorkBuddy 官方文档：它只读用户授权过的工作空间；
+   - agents 是 Codex、Cursor、Gemini CLI、GitHub Copilot 共用的目录，
+     其中 Gemini CLI、Copilot 的文件工具只能访问当前工作区。 */
+const SKILL_TARGET_TEXT={
+  claude_code:{title:'Claude Code',tip:'Cursor 也会读这个目录。'},
+  workbuddy:{title:'WorkBuddy（腾讯）',tip:'WorkBuddy 只读你授权过的文件夹：提问前在输入框下方点「选择工作空间」→「打开本地文件夹」，选知识库文件夹。已经开着的 WorkBuddy 要重开一次才看得到新技能。'},
+  agents:{title:'Codex、Cursor、Gemini CLI、GitHub Copilot',tip:'这几个工具共用同一个技能目录，装一份都能用。Gemini CLI 和 Copilot 只读当前工作区里的文件：在知识库文件夹里打开它们，或者把知识库加进工作区。'},
+};
+/* 用户改过、还没保存的勾选（位置名集合）。null 表示没改过：轮询拿到的
+   服务端设置直接回填进勾选框；改过以后轮询不再覆盖（同 limitTouched）。 */
+const skillDraft={wizard:null,daily:null};
+const SKILL_BOXES={wizard:'w-skill-targets',daily:'d-skill-targets'};
+
+/* 第一次拿到 skill_targets 时按位置建好三行（之后每次轮询只更新文字和
+   勾选状态，不重建，免得用户正点着的勾选框被换掉）。 */
+function buildSkillTargetRows(scope,targets){
+  const box=$(SKILL_BOXES[scope]);
+  if(box.childElementCount)return;
+  for(const t of targets){
+    const text=SKILL_TARGET_TEXT[t.id]||{title:t.id,tip:''};
+    const row=el('label',undefined,'choice');
+    const input=el('input');input.type='checkbox';input.dataset.target=t.id;
+    input.style.width='auto';input.style.marginTop='3px';
+    input.addEventListener('change',()=>{skillDraft[scope]=checkedSkillTargets(scope)});
+    const body=el('div');
+    const head=el('div');
+    head.append(el('span',text.title));
+    const tags=el('span');tags.dataset.role='tags';
+    head.append(tags);
+    body.append(head);
+    body.append(el('p',text.tip));
+    const where=el('p');where.dataset.role='path';
+    body.append(where);
+    row.append(input,body);
+    box.append(row);
+  }
+}
+/* 当前勾上的位置（按页面顺序）。 */
+function checkedSkillTargets(scope){
+  return Array.from($(SKILL_BOXES[scope]).querySelectorAll('input[type=checkbox]'))
+    .filter(input=>input.checked).map(input=>input.dataset.target);
+}
+/* 每次轮询：回填勾选（没改过时）、"本机有 xx / 已装好"标签和技能目录。 */
+function updateSkillTargetRows(scope,targets){
+  if(!Array.isArray(targets)||!targets.length)return;
+  buildSkillTargetRows(scope,targets);
+  const box=$(SKILL_BOXES[scope]);
+  for(const t of targets){
+    const input=box.querySelector('input[data-target="'+t.id+'"]');
+    if(!input)continue;
+    const row=input.closest('.choice');
+    const checked=skillDraft[scope]?skillDraft[scope].includes(t.id):t.selected;
+    input.checked=checked;
+    row.classList.toggle('on',checked);
+    const tags=row.querySelector('[data-role=tags]');tags.replaceChildren();
+    const found=t.detected_tools||[];
+    tags.append(document.createTextNode(' '));
+    tags.append(el('span',found.length?'本机有 '+found.join('、'):'本机没检测到',found.length?'tag done':'tag'));
+    if(t.installed){tags.append(document.createTextNode(' '));tags.append(el('span','已装好','tag done'))}
+    else if(t.selected){tags.append(document.createTextNode(' '));tags.append(el('span','还没装上','tag warn'))}
+    row.querySelector('[data-role=path]').textContent='技能装在 '+t.path;
+  }
+}
+/* 保存勾选：成功后丢掉草稿，回到"跟着服务端走"。返回给用户看的结果文字，
+   失败时返回 null（文字已写进 hint）。 */
+async function saveSkillTargets(scope,hint){
+  const r=await post('/api/skill-targets',{targets:checkedSkillTargets(scope)});
+  if(r.status!==200){
+    hint.className='hint err';hint.textContent='保存失败：'+plainCode(r.data.error||r.status);return null}
+  skillDraft[scope]=null;
+  updateSkillTargetRows(scope,r.data.skill_targets);
+  /* 某个位置写入或删除失败（比如目录不可写）：说清是哪个工具。 */
+  const failed=Object.entries(r.data.results||{}).filter(([,code])=>code==='failed')
+    .map(([id])=>(SKILL_TARGET_TEXT[id]||{title:id}).title);
+  return failed.length?('这些工具的技能没写成功：'+failed.join('、')+'（检查目录权限后再保存一次）'):'';
 }
 /* 日常页提供方是 API 类（没有密钥输入框）时显示"请点重新设置"提示。 */
 function updateEngineKeyTip(){
@@ -846,7 +951,7 @@ function setConnection(ok,text){
 
 /* ============ 首次向导 ============ */
 
-const WIZ_STEP_NAMES=['知识库位置','引擎','整理模型','扫码登录','导入范围'];
+const WIZ_STEP_NAMES=['知识库位置','引擎','整理模型','扫码登录','导入范围','提问工具'];
 function renderWizardSteps(){
   const box=$('wiz-steps');box.replaceChildren();
   WIZ_STEP_NAMES.forEach((name,i)=>{
@@ -855,9 +960,9 @@ function renderWizardSteps(){
   });
 }
 function showWizStep(){
-  for(const step of [1,2,3,4,5]){$('w'+step).classList.toggle('hidden',step!==wizStep)}
+  for(const step of [1,2,3,4,5,6]){$('w'+step).classList.toggle('hidden',step!==wizStep)}
   $('w-back').disabled=wizStep<=1;
-  $('w-next').textContent=wizStep>=5?'完成并开始':'下一步';
+  $('w-next').textContent=wizStep>=6?'完成并开始':'下一步';
   // 每次进入第 3 步都重新设置 base_url/Key 输入框的显示或隐藏
   // （曾实测出现"进第 3 步时 base_url 还显示"，多一道保险）。
   if(wizStep===3){onProviderChange()}
@@ -870,7 +975,7 @@ function wizHint(text,err){
    等状态接口回填现在的设置，避免沿用已经失效的引擎选择或可用角标。 */
 function resetWizardDraft(){
   wizStep=1;engineChoice='markdown';engineTouched=false;providerTouched=false;modelTouched=false;
-  limitTouched=false;kbRootLoaded=false;
+  limitTouched=false;kbRootLoaded=false;skillDraft.wizard=null;
   llmwikiRequested=false;llmwikiChecking=false;llmwikiHealthResult=null;llmwikiAsset=null;
   // 上轮可能只剩两个命令行选项，先恢复完整列表，再接受服务端回填。
   filterWizardProviders();
@@ -916,6 +1021,8 @@ function renderWizard(data){
      收藏多的话会分几天完成。 */
   const maxNew=s.max_new_per_run||100;
   $('w-limit-all-desc').textContent='把已有的收藏全部整理进知识库。每次运行最多新增 '+maxNew+' 条（定时设置里可改），收藏多的话会分几天完成。';
+  // 第 6 步的 AI 工具勾选：没改过时跟着服务端设置（默认只勾 Claude Code）。
+  updateSkillTargetRows('wizard',data.skill_targets);
   // 第 4 步的登录状态：设置里有主页地址 = 已登录。
   const loggedIn=!!s.profile_url;
   const login=data.login||{};
@@ -1054,21 +1161,25 @@ async function wizNext(){
   }else if(wizStep===4){
     wizStep=5;
   }else if(wizStep===5){
-    // 完成并开始：先保存导入范围，再请求 finish。
     const r=await post('/api/setup/first-import',{limit:limitChoice});
     if(r.status!==200){wizHint('导入范围保存失败：'+(r.data.error||r.status),true);return}
+    wizStep=6;
+  }else if(wizStep===6){
+    // 完成并开始：先保存要装进的 AI 工具，再请求 finish（finish 会按
+    // 勾选把正式版技能写进这些工具）。
+    const hint=$('w6-hint');hint.className='hint';hint.textContent='';
+    const skillNote=await saveSkillTargets('wizard',hint);
+    if(skillNote===null){return}
     // 完成设置也会检查并关闭后台，等待上限与选择引擎的检查保持一致。
     const f=await post('/api/setup/finish',{},240000);
     if(f.status!==200){
       const missing=(f.data.missing||[]).map(m=>plainCode(m)).join('、');
       wizHint('还有条件不满足：'+(missing||plainCode(f.data.error)||f.status),true);return}
     /* 资源没就绪时也可以点"完成并开始"——运行被服务端拦下，等
-       组件下载完成后自动开始，页面上如实提示而不是"已开始"。 */
-    if(f.data.assets_ready===false){
-      wizHint('设置完成。组件下载完成后会自动开始导入 ✓')
-    }else{
-      wizHint('设置完成，已开始第一次整理 ✓')
-    }
+       组件下载完成后自动开始，页面上如实提示而不是"已开始"。
+       某个工具的技能没写成功时把原因接在后面，不挡住完成设置。 */
+    const done=f.data.assets_ready===false?'设置完成。组件下载完成后会自动开始导入 ✓':'设置完成，已开始第一次整理 ✓';
+    wizHint(skillNote?done+'。'+skillNote:done,Boolean(skillNote));
     refresh();
   }
   showWizStep();
@@ -1181,6 +1292,16 @@ $('asr-form').addEventListener('submit',async event=>{
   const r=await post('/api/settings',{asr_model:model});
   if(r.status===200){hint.className='hint ok';hint.textContent='已保存 ✓ 缺的模型会自动在后台下载'}
   else{hint.className='hint err';hint.textContent='保存失败：'+plainCode(r.data.error||r.status)}
+});
+
+/* 提问用的 AI 工具：保存后立即按勾选写入或撤掉技能。 */
+$('d-skill-save').addEventListener('click',async()=>{
+  const hint=$('d-skill-hint');
+  hint.className='hint';hint.textContent='保存中…';
+  const note=await saveSkillTargets('daily',hint);
+  if(note===null){return}
+  if(note){hint.className='hint err';hint.textContent=note}
+  else{hint.className='hint ok';hint.textContent='已保存 ✓ 已经开着的 AI 工具重开一次就能用'}
 });
 
 /* 重新设置。确认后把 setup_completed 置回 false（其他设置保留），
