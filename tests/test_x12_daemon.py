@@ -46,7 +46,14 @@ def setup(tmp_path, monkeypatch):
                              make_engine=Mock(return_value=engine),
                              sync_skill=Mock(), keychain=Mock(),
                              _engine_selection_lock=threading.Lock(),
-                             _engine_selection_serial=0)
+                             _engine_selection_serial=0,
+                             # /api/status 也报告查询 Skill 装进了哪些 AI 工具：
+                             # 三个技能目录和检测工具用的主目录都指到临时目录。
+                             skill_target_roots=lambda: {
+                                 "claude_code": tmp_path / "skills",
+                                 "workbuddy": tmp_path / "workbuddy-skills",
+                                 "agents": tmp_path / "agents-skills"},
+                             tool_home=tmp_path / "tool-home")
     handler = object.__new__(daemon.ServiceHandler)
     handler.server = server
     handler._send_json = Mock()

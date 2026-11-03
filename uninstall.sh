@@ -266,23 +266,31 @@ remove_log_files() {
   if [ -d "$LOG_DIR" ]; then echo "    日志目录里还有其他文件，目录已保留：$LOG_DIR"; fi
 }
 
-# Skill 目录同样只删本工具写的 SKILL.md（和写入中断时可能
-# 留下的 .skill-* 临时文件），目录清空后才删除目录本身。
-# XHS_WIKI_SKILLS_ROOT 指错时，<它>/xhs-wiki 可能恰好是用户自己的文件夹。
+# 查询 Skill 可能装在好几个 AI 工具的技能目录里（控制台里勾选过哪个，
+# 本工具就往哪个写过 xhs-wiki/SKILL.md）：Claude Code 的目录，加上下面
+# 这些相对"其他 AI 工具主目录"（默认就是 ${HOME}）的目录。卸载时全都查一遍。
+# 这份清单要和 src/xhs_wiki/skill.py 的 TARGET_DIRS 一致（测试会核对）。
+EXTRA_SKILL_DIRS=(".workbuddy/skills" ".agents/skills" ".codebuddy/skills" ".trae/skills" ".trae-cn/skills" ".qoder/skills" ".lingma/skills" ".kiro/skills" ".gemini/config/skills" ".cline/skills")
+
+# 每个目录同样只删本工具写的 SKILL.md（和写入中断时可能留下的 .skill-*
+# 临时文件），目录清空后才删除目录本身。
+# 环境变量指错时，<它>/xhs-wiki 可能恰好是用户自己的文件夹。
 remove_skill_files() {
-  local leftover
-  if [ "$DRY_RUN" = "yes" ]; then
-    echo "    将删除 $SKILL_DIR/SKILL.md；目录清空后才删除目录本身"
-    return
-  fi
-  if [ -e "$SKILL_DIR/SKILL.md" ] || [ -L "$SKILL_DIR/SKILL.md" ]; then
-    run rm -f -- "$SKILL_DIR/SKILL.md"
-  fi
-  for leftover in "$SKILL_DIR"/.skill-*; do
-    if [ -e "$leftover" ] || [ -L "$leftover" ]; then run rm -f -- "$leftover"; fi
+  local leftover dir
+  for dir in "${SKILL_DIRS[@]}"; do
+    if [ "$DRY_RUN" = "yes" ]; then
+      echo "    将删除 $dir/SKILL.md（如果有）；目录清空后才删除目录本身"
+      continue
+    fi
+    if [ -e "$dir/SKILL.md" ] || [ -L "$dir/SKILL.md" ]; then
+      run rm -f -- "$dir/SKILL.md"
+    fi
+    for leftover in "$dir"/.skill-*; do
+      if [ -e "$leftover" ] || [ -L "$leftover" ]; then run rm -f -- "$leftover"; fi
+    done
+    if [ -d "$dir" ] && [ -z "$(ls -A -- "$dir")" ]; then run rmdir -- "$dir"; fi
+    if [ -d "$dir" ]; then echo "    Skill 目录里还有其他文件，目录已保留：$dir"; fi
   done
-  if [ -d "$SKILL_DIR" ] && [ -z "$(ls -A -- "$SKILL_DIR")" ]; then run rmdir -- "$SKILL_DIR"; fi
-  if [ -d "$SKILL_DIR" ]; then echo "    Skill 目录里还有其他文件，目录已保留：$SKILL_DIR"; fi
 }
 
 # 命令软链接是否属于本次安装（只认指向本程序目录 venv 的链接）。
@@ -295,7 +303,8 @@ main() {
   set -euo pipefail
   # 脚本内部的 cd 一律不经过用户导出的 CDPATH。
   unset CDPATH
-  local supplied_app kb_value entry log_check_path skill_check_path plan="" app_explicit="no"
+  local supplied_app kb_value entry log_check_path skill_check_path skill_dir tools_home plan="" app_explicit="no"
+  local skill_check_paths=()
   ASSUME_YES="no"
   DRY_RUN="no"
   PURGE_KB="no"
@@ -322,14 +331,28 @@ main() {
   PLIST_PATH="$HOME/Library/LaunchAgents/io.github.xhs-wiki.service.plist"
   LAUNCH_AGENT_LABEL="io.github.xhs-wiki.service"
   LOG_DIR="$(expand_home "${XHS_WIKI_LOG_DIR:-$HOME/Library/Logs/xhs-wiki}")" || die log_dir_invalid '日志目录路径无效。'
-  SKILL_DIR="$(expand_home "${XHS_WIKI_SKILLS_ROOT:-$HOME/.claude/skills}/xhs-wiki")" || die skill_dir_invalid 'Skill 目录路径无效。'
+  # 各 AI 工具的技能目录（见 remove_skill_files 上方的说明），第一个是
+  # Claude Code 的。和 install.sh 一致：XHS_WIKI_TOOLS_HOME 改写其他工具
+  # 所在的主目录，XHS_WIKI_SKILLS_ROOT 单独改写 Claude Code 的目录。
+  tools_home="$(expand_home "${XHS_WIKI_TOOLS_HOME:-$HOME}")" || die skill_dir_invalid 'AI 工具主目录（XHS_WIKI_TOOLS_HOME）路径无效。'
+  SKILL_DIRS=()
+  skill_dir="$(expand_home "${XHS_WIKI_SKILLS_ROOT:-$tools_home/.claude/skills}/xhs-wiki")" || die skill_dir_invalid 'Skill 目录路径无效。'
+  SKILL_DIRS+=("$skill_dir")
+  for entry in "${EXTRA_SKILL_DIRS[@]}"; do
+    SKILL_DIRS+=("$tools_home/$entry/xhs-wiki")
+  done
   # 删除参数保留原路径，绝不能把末级符号链接解析成目标后再删目标。
   # 去掉末尾斜杠才能可靠判断目录链接；遇到链接直接停下，交给用户核对。
   while [ "$LOG_DIR" != / ] && [ "${LOG_DIR%/}" != "$LOG_DIR" ]; do LOG_DIR="${LOG_DIR%/}"; done
   [ ! -L "$LOG_DIR" ] || die log_dir_unsafe '日志目录是符号链接，已拒绝卸载。'
-  [ ! -L "$SKILL_DIR" ] || die skill_dir_unsafe 'Skill 目录是符号链接，已拒绝卸载。'
+  for skill_dir in "${SKILL_DIRS[@]}"; do
+    [ ! -L "$skill_dir" ] || die skill_dir_unsafe "Skill 目录是符号链接，已拒绝卸载：$(quote_arg "$skill_dir")"
+  done
   log_check_path="$(canonical_path "$LOG_DIR")" || die log_dir_invalid '日志目录路径无效。'
-  skill_check_path="$(canonical_path "$SKILL_DIR")" || die skill_dir_invalid 'Skill 目录路径无效。'
+  for skill_dir in "${SKILL_DIRS[@]}"; do
+    skill_check_path="$(canonical_path "$skill_dir")" || die skill_dir_invalid 'Skill 目录路径无效。'
+    skill_check_paths+=("$skill_check_path")
+  done
   BIN_LINK="$HOME/.local/bin/xhs-wiki"
   # 显式写了 --app-home 却找不到这个目录，多半是拼错了。
   # 以前会跳过程序目录，接着照删当前环境的日志和 Skill（也就是正式安装
@@ -343,7 +366,9 @@ main() {
   fi
   validate_app_home
   protected_path "$log_check_path" && die log_dir_unsafe '日志目录指向受保护目录，已拒绝卸载。'
-  protected_path "$skill_check_path" && die skill_dir_unsafe 'Skill 目录指向受保护目录，已拒绝卸载。'
+  for skill_check_path in "${skill_check_paths[@]}"; do
+    protected_path "$skill_check_path" && die skill_dir_unsafe 'Skill 目录指向受保护目录，已拒绝卸载。'
+  done
   KB_ROOT_UNKNOWN="no"
   if kb_value="$(read_kb_root)"; then
     KB_ROOT="$(canonical_path "$kb_value")" || die kb_root_invalid '设置中的知识库路径无效。'
@@ -356,9 +381,14 @@ main() {
   # 按磁盘身份比较，大小写不同的写法也认得出来。
   same_or_inside "$APP_HOME" "$KB_ROOT" &&
     die kb_root_in_app_home '知识库位于程序目录内；请先迁出知识库，再卸载。'
-  if same_or_inside "$log_check_path" "$KB_ROOT" || same_or_inside "$skill_check_path" "$KB_ROOT"; then
+  if same_or_inside "$log_check_path" "$KB_ROOT"; then
     die kb_root_in_install_files '知识库位于日志或 Skill 目录内；请先迁出知识库，再卸载。'
   fi
+  for skill_check_path in "${skill_check_paths[@]}"; do
+    if same_or_inside "$skill_check_path" "$KB_ROOT"; then
+      die kb_root_in_install_files '知识库位于日志或 Skill 目录内；请先迁出知识库，再卸载。'
+    fi
+  done
   if [ "$DRY_RUN" = "yes" ]; then
     echo '=== dry-run 模式：只打印要做的事，不删除任何东西 ==='
     echo "APP_HOME=$APP_HOME"
@@ -371,7 +401,9 @@ main() {
   fi
   if plist_belongs_to_app; then plan="${plan}    - LaunchAgent 配置：$PLIST_PATH"$'\n'; fi
   if log_files_present; then plan="${plan}    - 日志文件：$LOG_DIR 里的 ${LOG_FILES}"$'\n'; fi
-  if [ -e "$SKILL_DIR/SKILL.md" ]; then plan="${plan}    - Claude Skill：$SKILL_DIR/SKILL.md"$'\n'; fi
+  for skill_dir in "${SKILL_DIRS[@]}"; do
+    if [ -e "$skill_dir/SKILL.md" ]; then plan="${plan}    - 查询 Skill：$skill_dir/SKILL.md"$'\n'; fi
+  done
   if bin_link_belongs_to_app; then plan="${plan}    - 命令链接：$BIN_LINK"$'\n'; fi
   if [ "$PURGE_KB" = "yes" ]; then
     plan="${plan}    - 知识库里本工具生成的内容：$KB_ROOT 下的 索引.md、暂缓.md、主题/、来源/、.xhs-wiki/"$'\n'
@@ -401,7 +433,7 @@ main() {
   fi
   note '步骤 3/5 删除日志文件'
   remove_log_files
-  note '步骤 4/5 删除 Claude Skill 和命令软链接'
+  note '步骤 4/5 删除查询 Skill 和命令软链接'
   remove_skill_files
   # 仅删除本安装的软链接；同名普通文件或其他安装的链接不属于本次卸载。
   if [ "$DRY_RUN" = "yes" ]; then

@@ -29,6 +29,12 @@ if not os.environ.get("XHS_WIKI_LOG_DIR"):
 # ~/.claude/skills（直接运行 pytest tests -q、没有手动设置时同样安全）。
 if not os.environ.get("XHS_WIKI_SKILLS_ROOT"):
     os.environ["XHS_WIKI_SKILLS_ROOT"] = os.path.join(_SESSION_TMP, "skills")
+# 其他 AI 工具（WorkBuddy、Codex 等）所在的主目录同样兜底到临时目录：
+# 它们的技能目录和检测"本机装了哪些 AI 工具"的线索都在它下面，测试既
+# 不去看、也不会写真实的 ~/.workbuddy、~/.agents、~/.codex，结果也不随
+# 开发者本机装了什么而变。
+if not os.environ.get("XHS_WIKI_TOOLS_HOME"):
+    os.environ["XHS_WIKI_TOOLS_HOME"] = os.path.join(_SESSION_TMP, "tools-home")
 
 # 开发者终端里常会设 HF_ENDPOINT（Hugging Face 镜像地址）。
 # 语音模型下载会优先尝试它，测试里假下载器断言的请求顺序就会被打乱。

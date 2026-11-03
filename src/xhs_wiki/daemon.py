@@ -476,6 +476,7 @@ POST_ROUTES = (
     "/api/setup/restart",
     "/api/notes/retry",
     "/api/open-kb",
+    "/api/skill-targets",
 )
 
 
@@ -1326,7 +1327,9 @@ class ServiceServer(ThreadingHTTPServer):
     - make_provider：(settings) -> Provider（test-llm 用）；
     - make_engine：(settings) -> 引擎（setup/engine 的健康检查用）；
     - opener：(参数列表) -> 用系统命令打开（open-kb 用，只允许打开 kb_root）；
-    - disk_usage / clock / cache_seconds：磁盘查询、单调时钟、缓存时长。
+    - disk_usage / clock / cache_seconds：磁盘查询、单调时钟、缓存时长；
+    - skills_root / skill_roots / tool_home：查询 Skill 的安装目录（前者是
+      Claude Code 的，后者按位置名逐个改写）和检测 AI 工具用的主目录。
     """
 
     daemon_threads = True
@@ -1335,7 +1338,8 @@ class ServiceServer(ThreadingHTTPServer):
                  console_path=None, ledger_factory=None, keychain=None,
                  make_provider=None, make_engine=None, opener=None,
                  disk_usage=None, clock=None, cache_seconds=CACHE_SECONDS,
-                 skills_root=None, token=None):
+                 skills_root=None, skill_roots=None, tool_home=None,
+                 token=None):
         self.supervisor = supervisor
         # 控制台页面随包分发（src/xhs_wiki/web/console.html）。
         self.console_path = Path(console_path if console_path is not None
@@ -1382,7 +1386,23 @@ class ServiceServer(ThreadingHTTPServer):
         # Skill 的安装位置（默认 ~/.claude/skills；测试注入临时目录，
         # 绝不在测试里碰真实 ~/.claude）。
         self.skills_root = skills_root
+        # 其他 AI 工具的技能目录（位置名 → 目录，见 skill.TARGET_ROOTS）
+        # 和检测工具用的主目录；None 表示用默认值，测试注入临时目录，
+        # 绝不碰真实的 ~/.workbuddy、~/.agents。
+        self.skill_roots = dict(skill_roots or {})
+        self.tool_home = tool_home
+        # 写 Skill 的锁：改勾选的接口要"存设置 + 按新设置写文件"一气呵成，
+        # 两次快速保存交错时，后写的必须是最新的设置。可重入：接口拿着锁
+        # 再调 sync_skill 不会把自己卡住。
+        self._skill_lock = threading.RLock()
         super().__init__(address, ServiceHandler)
+
+    def skill_target_roots(self) -> dict:
+        """sync / targets_state 用的目录改写表（没改写的位置用默认目录）。"""
+        roots = dict(self.skill_roots)
+        if self.skills_root is not None:
+            roots["claude_code"] = self.skills_root
+        return roots
 
     # ---------------- 连接数上限 ----------------
 
@@ -1422,20 +1442,24 @@ class ServiceServer(ThreadingHTTPServer):
 
     # ---------------- Skill 同步 ----------------
 
-    def sync_skill(self, settings: dict) -> None:
-        """按当前设置更新已安装的 Claude Skill（skill.install）。
+    def sync_skill(self, settings: dict, withdraw=()) -> dict:
+        """按当前设置更新查询 Skill（skill.sync），返回各位置的结果代码。
 
-        什么时机调用：首次设置完成、修改 kb_root
-        或 engine 之后——Skill 正文里写死了这两个值，改了设置不更新，
-        AI 就会去旧路径找知识库。失败只忽略（磁盘满/权限）：Skill 旧一点
-        不影响流水线，不该让设置接口整体失败。
+        什么时机调用：首次设置完成、修改 kb_root、engine 或要装进的
+        AI 工具之后——Skill 正文里写死了知识库路径和引擎，改了设置不更新，
+        AI 就会去旧路径找知识库。勾选的位置写入；``withdraw`` 是用户刚取消
+        勾选的位置，撤掉本工具写过的文件（只有改勾选的接口会传）。失败只
+        体现在返回的结果代码里（磁盘满/权限）：Skill 旧一点不影响流水线，
+        不该让设置接口整体失败。
         """
         from . import skill
-        try:
-            skill.install(settings, skills_root=self.skills_root)
-        except (OSError, ValueError, KeyError):
-            # 只带稳定错误意图，不把异常信息（可能含路径）写进任何地方。
-            return
+        with self._skill_lock:
+            try:
+                return skill.sync(settings, roots=self.skill_target_roots(),
+                                  withdraw=withdraw)
+            except (OSError, ValueError, KeyError):
+                # 只带稳定错误意图，不把异常信息（可能含路径）写进任何地方。
+                return {}
 
     # ---------------- 可注入依赖的默认实现 ----------------
 
@@ -1896,7 +1920,45 @@ class ServiceHandler(BaseHTTPRequestHandler):
         elif route == "/api/open-kb":
             self._post_open_kb()
 
+        elif route == "/api/skill-targets":
+            self._post_skill_targets(body)
+
     # ---------------- 向导和日常页的各个接口 ----------------
+
+    def _post_skill_targets(self, body: dict):
+        """选择把查询 Skill 装进哪些 AI 工具（向导第 6 步和日常页共用）。
+
+        请求体：{"targets": [位置名, ...]}，位置名只能是
+        store.SKILL_TARGETS 里的固定名字（claude_code / workbuddy /
+        agents），不能带路径之类的自由文本。保存设置后立即按新设置同步：
+        勾选的位置写入 Skill；原来勾着、这次取消的位置撤掉本工具写过的
+        文件（原来就没勾的位置不碰，那里用户自己放的东西保持原样）。
+
+        返回 {"ok": true, "skill_targets": 各位置状态, "results": {位置:
+        结果代码}}。某个位置写入失败（比如目录不可写）不算整个请求失败，
+        页面按 results 里的 failed 提示用户。
+        """
+        from . import skill
+        store = self.server.supervisor.store
+        targets = body.get("targets")
+        with self.server._skill_lock:
+            # 改之前勾着哪些：和 skill.sync 用同一个读法（手工改坏的值按默认处理）。
+            before = skill.selected_targets(store.load_settings())
+            try:
+                store.update_settings({"skill_targets": targets})
+            except ValueError as error:
+                self._send_json(400, {"error": str(error)})
+                return
+            settings = store.load_settings()
+            results = self.server.sync_skill(
+                settings, withdraw=before - set(settings["skill_targets"]))
+        self._send_json(200, {
+            "ok": True,
+            "skill_targets": skill.targets_state(
+                settings, roots=self.server.skill_target_roots(),
+                home=self.server.tool_home),
+            "results": results,
+        })
 
     def _post_setup_kb_root(self, body: dict):
         """设置知识库位置（向导第 1 步，也是"重新设置"里换位置的入口）。
@@ -2317,6 +2379,7 @@ def build_status(server: ServiceServer) -> dict:
     # 步骤代码 → 中文（runner 集中定义，控制台直接复用）。
     from .runner import STEP_LABELS
     from .assets import llmwiki_supported
+    from . import skill as skill_module
 
     return {
         "status": store.read_status(),
@@ -2332,6 +2395,10 @@ def build_status(server: ServiceServer) -> dict:
         # 后台资源（下载组件 / 语音模型 / 可选 LLM Wiki）的下载进度。
         "assets": supervisor.assets_state(),
         "llmwiki_supported": llmwiki_supported(),
+        # 查询 Skill 装进了哪些 AI 工具、本机检测到了哪些工具（向导第 6 步
+        # 和日常页显示）。检测只看几个路径存不存在，每 5 秒轮询一次也不费事。
+        "skill_targets": skill_module.targets_state(
+            settings, roots=server.skill_target_roots(), home=server.tool_home),
         "paused": store.pause_requested(),
         # ---------------- 台账、知识库、首次设置与模型 ----------------
         "counts": counts,

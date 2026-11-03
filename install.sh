@@ -233,8 +233,14 @@ ASR_MODEL="whisper"
   validate_app_home
   LOG_DIR="${XHS_WIKI_LOG_DIR:-$HOME/Library/Logs/xhs-wiki}"
   SKILLS_ROOT="${XHS_WIKI_SKILLS_ROOT:-$HOME/.claude/skills}"
+  # 其他 AI 工具（WorkBuddy、Codex 等）所在的主目录：它们的技能目录
+  # （~/.workbuddy/skills、~/.agents/skills 等）都在它下面，装不装由用户在
+  # 控制台勾选。隔离测试时指到测试目录，并和上面几个一起写进后台服务的
+  # 环境，保证服务也只写测试目录。
+  TOOLS_HOME="${XHS_WIKI_TOOLS_HOME:-$HOME}"
   CHROME_APP="${XHS_WIKI_CHROME_APP:-/Applications/Google Chrome.app}"
-  export XHS_WIKI_HOME="$APP_HOME" XHS_WIKI_LOG_DIR="$LOG_DIR" XHS_WIKI_SKILLS_ROOT="$SKILLS_ROOT"
+  export XHS_WIKI_HOME="$APP_HOME" XHS_WIKI_LOG_DIR="$LOG_DIR" XHS_WIKI_SKILLS_ROOT="$SKILLS_ROOT" \
+    XHS_WIKI_TOOLS_HOME="$TOOLS_HOME"
   SERVE_COMMAND="env XHS_WIKI_HOME=$(quote_arg "$APP_HOME") XHS_WIKI_LOG_DIR=$(quote_arg "$LOG_DIR") $(quote_arg "$VENV_BIN/xhs-wiki") serve"
   OPEN_COMMAND="env XHS_WIKI_HOME=$(quote_arg "$APP_HOME") $(quote_arg "$VENV_BIN/xhs-wiki") open"
 
@@ -437,7 +443,8 @@ with path.open('rb') as source:
     data = plistlib.load(source)
 data.setdefault('EnvironmentVariables', {}).update({
     name: os.environ[name]
-    for name in ('HOME', 'XHS_WIKI_HOME', 'XHS_WIKI_LOG_DIR', 'XHS_WIKI_SKILLS_ROOT')
+    for name in ('HOME', 'XHS_WIKI_HOME', 'XHS_WIKI_LOG_DIR', 'XHS_WIKI_SKILLS_ROOT',
+                 'XHS_WIKI_TOOLS_HOME')
 })
 # 日志位置也写入 plist，确保 launchd 打开日志时与已创建的目录一致。
 data['StandardOutPath'] = str(Path(os.environ['XHS_WIKI_LOG_DIR']) / 'daemon.log')
@@ -471,13 +478,20 @@ PY
   fi
   note "步骤 6/9 下载组件和语音模型（由后台服务在后台下载，本脚本不等待）"
   echo "    XHS-Downloader 和设置中选定的语音模型由后台服务下载，进度显示在控制台顶部"
-  note "步骤 7/9 安装 Claude Skill（让 AI 能按意图查你的知识库）"
+  note "步骤 7/9 安装查询 Skill（让 AI 能按意图查你的知识库）"
+  # 按设置里勾选的 AI 工具写入（默认只有 Claude Code；升级时顺带把控制台里
+  # 勾选过的 WorkBuddy 等也更新成新版本）。这一步只写不删：取消勾选由
+  # 控制台处理。没检测到 Claude Code 时照旧跳过它的目录，其他勾选的工具
+  # 照常写（命令行参数里列出的位置名会从勾选里去掉）。
   if [ "$DRY_RUN" = "yes" ]; then
-    echo "    检测到 Claude Code 后写入 $SKILLS_ROOT/xhs-wiki/SKILL.md"
-  elif command -v claude >/dev/null 2>&1 || [ -d "$SKILLS_ROOT" ] || [ -d "$HOME/.claude" ]; then
-    run "$VENV_PYTHON" -P -c 'from xhs_wiki import config, skill; from xhs_wiki.store import ServiceStore; skill.install(ServiceStore(config.app_home()).load_settings())' || die "Skill 写入失败" "检查 $SKILLS_ROOT 是否可写以及上方错误"
+    echo "    检测到 Claude Code 后写入 $SKILLS_ROOT/xhs-wiki/SKILL.md；控制台里勾选过的其他 AI 工具一并更新"
   else
-    echo "    没检测到 Claude Code，跳过 Skill"
+    SKIP_SKILL_TARGET=""
+    if ! { command -v claude >/dev/null 2>&1 || [ -d "$SKILLS_ROOT" ] || [ -d "$HOME/.claude" ]; }; then
+      SKIP_SKILL_TARGET="claude_code"
+      echo "    没检测到 Claude Code，跳过 Claude Code 的 Skill"
+    fi
+    run "$VENV_PYTHON" -P -c 'import sys; from xhs_wiki import config, skill; from xhs_wiki.store import ServiceStore; settings = ServiceStore(config.app_home()).load_settings(); settings["skill_targets"] = [t for t in settings["skill_targets"] if t not in sys.argv[1:]]; sys.exit(1 if "failed" in skill.sync(settings).values() else 0)' $SKIP_SKILL_TARGET || die "Skill 写入失败" "检查技能目录（$SKILLS_ROOT 等）是否可写以及上方错误"
   fi
   note "步骤 8/9 建立命令软链接 ~/.local/bin/xhs-wiki"
   if [ "$CREATE_LINK" = "yes" ]; then

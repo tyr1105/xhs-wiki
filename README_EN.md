@@ -26,7 +26,7 @@ Don't let your saves gather dust: turn your RedNote (Xiaohongshu) favorites into
 
 Your RedNote saves keep piling up, and when you need one, you can scroll forever without finding it. What was said in a video or written on an image is worse: there's no way to search it. Ask an AI assistant, and it has no idea what you saved, so you get a generic answer.
 
-**xhs-wiki** downloads your new saves to your Mac every day, reads the text in images and transcribes the speech in videos right on your Mac, then hands that text to the AI model you choose, which organizes it into a knowledge base grouped by topic (plain Markdown files, the kind of text notes any editor can open). Later, when you ask Claude Code (Anthropic's AI assistant) about something you saved, it uses the query Skill that xhs-wiki installs (a short set of instructions for Claude Code) to check your own saves first, then answers with its sources (the title and link of each saved post it drew on). You can also ask it outright to check your saves.
+**xhs-wiki** downloads your new saves to your Mac every day, reads the text in images and transcribes the speech in videos right on your Mac, then hands that text to the AI model you choose, which organizes it into a knowledge base grouped by topic (plain Markdown files, the kind of text notes any editor can open). Later, when you ask Claude Code (Anthropic's AI assistant), Tencent's WorkBuddy, Codex, Cursor, Trae or a similar AI tool about something you saved, it uses the query Skill that xhs-wiki installs (a short set of instructions for the AI) to check your own saves first, then answers with its sources (the title and link of each saved post it drew on). You can also ask it outright to check your saves. (Tested in Claude Code and the Codex CLI; the other tools are supported per their official docs and not yet tested.)
 
 This project grew out of the author's own workflow (that workflow has already turned **1,100+ RedNote saves** into a personal knowledge base and keeps up with new saves every day). xhs-wiki is its general-purpose, open-source version; the author has run it end to end on a fresh install, importing the latest 20 saves.
 
@@ -56,7 +56,7 @@ Claude:  The recipe you saved says 200°C for 12 minutes, flip, then another
 ## What it does: daily organizing, video to text, answers with sources
 
 - **Find things when you need them.** Ask in your own words; no need to remember titles. What was said in videos and the text on images can be found too. Saves on the same topic are merged into one page, and answers cite their sources (the title and link of each saved post). The Skill also tells Claude to say so when nothing matches, rather than make something up.
-- **Set it up once, and it keeps up.** One command installs it: no Python setup, no Homebrew, git or ffmpeg, and no hunting for cookies. When it's done, your browser opens the console; walk through the 5-step wizard (one step is a QR-code login) and organizing begins. After that, new saves are picked up every day at 03:00 Beijing time (UTC+8) by default. If your Mac is asleep at that moment, that's fine: it catches up when it wakes. If a note (RedNote's word for a post) fails, the console shows why, and you can retry it on its own.
+- **Set it up once, and it keeps up.** One command installs it: no Python setup, no Homebrew, git or ffmpeg, and no hunting for cookies. When it's done, your browser opens the console; walk through the 6-step wizard (one step is a QR-code login) and organizing begins. After that, new saves are picked up every day at 03:00 Beijing time (UTC+8) by default. If your Mac is asleep at that moment, that's fine: it catches up when it wakes. If a note (RedNote's word for a post) fails, the console shows why, and you can retry it on its own.
 - **Your data stays yours.** Text in images is read with macOS's built-in recognition, and speech in videos with Whisper by default, both on your Mac. Original images and videos are never sent to the organizing model; by default they're deleted once verified, leaving only the organized text. You pick the organizing model: Claude Code or Codex on your existing subscription, or Anthropic's API or any OpenAI-compatible API (including a model server running on your own Mac). What you get is a plain Markdown folder that Obsidian or any editor can open, with no lock-in to any platform, and uninstalling keeps it by default.
 
 ## Who it's for
@@ -68,7 +68,7 @@ Claude:  The recipe you saved says 200°C for 12 minutes, flip, then another
 - keep a personal knowledge base in Obsidian or a similar tool and want your RedNote saves in it too;
 - read Chinese, or are fine with a Chinese console and knowledge base (see [Do I need to read Chinese?](#do-i-need-to-read-chinese)).
 
-To "just ask and find it", you currently need to ask in Claude Code. Without Claude Code, you can still browse the organized knowledge base in Obsidian or any editor. So far the tool has only been tested with RedNote accounts registered in mainland China (see [this FAQ](#does-it-work-with-a-rednote-account-registered-outside-mainland-china)).
+To "just ask and find it", ask in an AI tool that has the query Skill: it goes into Claude Code by default, and the last wizard step can also install it for Tencent's WorkBuddy, Codex, Cursor, Trae, CodeBuddy, OpenClaw and a dozen other tools (list and test status in [Use it with Claude Code and Obsidian](#use-it-with-claude-code-and-obsidian)). Without any of these, you can still browse the organized knowledge base in Obsidian or any editor. So far the tool has only been tested with RedNote accounts registered in mainland China (see [this FAQ](#does-it-work-with-a-rednote-account-registered-outside-mainland-china)).
 
 **Not a fit (yet) if you:**
 
@@ -88,7 +88,7 @@ To "just ask and find it", you currently need to ask in Claude Code. Without Cla
 
 **Can I install it from mainland China?** You need to be able to reach GitHub, where the install script and the source package are hosted. If GitHub works but Python packages or the speech model download slowly, add `--mirror cn` when installing to switch to mirrors in mainland China. Outside mainland China you don't need it. → [Installing in mainland China](#installing-in-mainland-china)
 
-**I don't code. How hard is it, and how long does it take?** You paste one command into Terminal and answer a few yes/no questions; everything else is clicking through 5 steps in your browser, one of them a QR-code login. There's no Homebrew, git or ffmpeg to install first. What you do need ready beforehand is Google Chrome and an organizing model. The organizing model means a working, logged-in `claude` (Claude Code) or `codex` (Codex) command in Terminal, or a model API key (see [Choosing an organizing model](#choosing-an-organizing-model)); that's the most hands-on part. If you don't have one yet, set it up and log in following its official instructions before installing. Without it you can still finish the wizard, but the first run stops with "整理模型不可用" (organizing model unavailable). The installer downloads a Python runtime and dependencies, and the default speech model (about 1.5 GiB) downloads in the background without holding up the setup, so speed mostly depends on your network. For how long the first organizing run takes, see [I have a lot of saves. How long will it take?](#i-have-a-lot-of-saves-how-long-will-it-take) → [Quick start](#quick-start)
+**I don't code. How hard is it, and how long does it take?** You paste one command into Terminal and answer a few yes/no questions; everything else is clicking through 6 steps in your browser, one of them a QR-code login. There's no Homebrew, git or ffmpeg to install first. What you do need ready beforehand is Google Chrome and an organizing model. The organizing model means a working, logged-in `claude` (Claude Code) or `codex` (Codex) command in Terminal, or a model API key (see [Choosing an organizing model](#choosing-an-organizing-model)); that's the most hands-on part. If you don't have one yet, set it up and log in following its official instructions before installing. Without it you can still finish the wizard, but the first run stops with "整理模型不可用" (organizing model unavailable). The installer downloads a Python runtime and dependencies, and the default speech model (about 1.5 GiB) downloads in the background without holding up the setup, so speed mostly depends on your network. For how long the first organizing run takes, see [I have a lot of saves. How long will it take?](#i-have-a-lot-of-saves-how-long-will-it-take) → [Quick start](#quick-start)
 
 ## Quick start
 
@@ -107,13 +107,13 @@ On a network in mainland China where Python packages or the speech model downloa
 
 The installer's messages are in Chinese. Along the way it asks up to three yes/no questions: whether to install uv if it's missing (uv is the tool the installer uses to set up Python), whether to start xhs-wiki in the background whenever you log in, and whether to add the `xhs-wiki` command to `~/.local/bin`. When you see `[y/N]`, type `y` and press Return to agree; pressing Return alone means no. If you decline uv, the install stops; to continue, run the same command again and answer `y` to that question.
 
-**Step 2: walk through 5 steps in your browser.** When the install finishes, your browser opens the local console (a web page served only on your Mac). To open it again later, run `xhs-wiki open` in Terminal. The top of the page shows download progress for the download component and the speech model, and you can do the setup in the meantime:
+**Step 2: walk through 6 steps in your browser.** When the install finishes, your browser opens the local console (a web page served only on your Mac). To open it again later, run `xhs-wiki open` in Terminal. The top of the page shows download progress for the download component and the speech model, and you can do the setup in the meantime:
 
-知识库位置 (knowledge base location) → 引擎 (engine) → 整理模型 (organizing model, with a "测试" Test button) → 扫码登录 (QR-code login) → 导入范围 (import range)
+知识库位置 (knowledge base location) → 引擎 (engine) → 整理模型 (organizing model, with a "测试" Test button) → 扫码登录 (QR-code login) → 导入范围 (import range) → 提问工具 (AI tools to ask in)
 
-For the first import, pick "最近 20 条（推荐，先看效果）" (latest 20, recommended), then click "完成并开始" (Finish and start). This choice only affects the first import; new saves are processed every day after that. Organizing starts by itself once the downloads finish, and the console shows the progress, so there's no need to watch it.
+For the first import, pick "最近 20 条（推荐，先看效果）" (latest 20, recommended). This choice only affects the first import; new saves are processed every day after that. On the last step, tick the AI tools you use (only Claude Code is ticked by default), then click "完成并开始" (Finish and start). Organizing starts by itself once the downloads finish, and the console shows the progress, so there's no need to watch it.
 
-**Step 3: ask in Claude Code.** Once your saves are organized, try questions like these (examples):
+**Step 3: ask in your AI tool.** Once your saves are organized, try questions like these in Claude Code (or another tool you ticked) (examples):
 
 - "Check my saves for good places to take the kids on a weekend." (查一下我的收藏里有没有适合周末带孩子去的地方。)
 - "Based on what I've saved, how do I make air-fryer chicken wings?" (根据我之前存过的内容，空气炸锅鸡翅怎么做？)
@@ -122,7 +122,7 @@ For the first import, pick "最近 20 条（推荐，先看效果）" (latest 20
 
 Asking in English usually works but hasn't been systematically tested. If Claude Code doesn't check your saves on its own, name the Skill: "Use xhs-wiki to check …".
 
-No Claude Code? Open the knowledge base folder (`~/XHS-Wiki` by default) in Obsidian or any editor. From then on, new saves are picked up every day at 03:00 Beijing time by default; to bring in older saves as well, see [First-run setup](#first-run-setup-the-console-wizard).
+Not using an AI tool? Open the knowledge base folder (`~/XHS-Wiki` by default) in Obsidian or any editor. From then on, new saves are picked up every day at 03:00 Beijing time by default; to bring in older saves as well, see [First-run setup](#first-run-setup-the-console-wizard).
 
 Want to see what the installer would do first? You can preview it without installing. It only prints the steps; it creates, downloads and changes nothing:
 
@@ -167,7 +167,7 @@ Run the real install yourself in Terminal: the script asks for your consent ther
 flowchart LR
   subgraph MAC["Your Mac"]
     B["Download to your Mac"] --> C["Read text in images<br/>Transcribe speech in videos"]
-    E["Markdown knowledge base<br/>index · topics · sources"] --> F["Claude Code Skill<br/>finds answers, cites sources"]
+    E["Markdown knowledge base<br/>index · topics · sources"] --> F["Query Skill<br/>Claude Code · WorkBuddy · Codex …<br/>finds answers, cites sources"]
   end
   A["Your RedNote saves"] -->|read daily on a schedule| B
   C -->|extracted text only| M["Organizing model you choose<br/>Claude Code / Codex / API"]
@@ -178,26 +178,47 @@ flowchart LR
 2. **Recognize and transcribe on your Mac**: text in images is recognized with macOS Vision; the audio in videos is decoded on your Mac and transcribed with Whisper large-v3-turbo by default.
 3. **Organize**: the extracted text goes to the organizing model you choose, which turns it into topic pages and source pages; then an index is generated. Notes with too little content are marked "暂缓" (deferred), keeping whatever source information is usable.
 4. **Clean up originals**: on by default (you can turn off "每天自动清理已入库的原件", daily cleanup of imported originals, under "定时设置", Schedule). Downloaded images and videos are deleted only after both the import result and a file-integrity check pass. The organized knowledge base is kept, and originals that fail the check are kept too; nothing is deleted just because a run finished. In the author's test, after 3 saves (including videos) were imported, cleaning up the originals freed 358 MB.
-5. **Ask**: the installed Skill is a set of query instructions for Claude Code: check your knowledge base first, then answer and cite the sources.
+5. **Ask**: the installed Skill is a set of query instructions in a common format (SKILL.md), written to the skills folder of each AI tool you ticked: check your knowledge base first, then answer and cite the sources.
 
 In the organizing step, xhs-wiki sends only the extracted text to the model you choose; whether it leaves your Mac depends on that service, and Codex comes with one extra caveat. When you ask Claude Code a question, whatever it reads from your knowledge base also goes to the model service Claude Code uses (for both, see [Where your data goes](#where-your-data-goes)). The local console shows progress, lets you change settings, and starts a run by hand.
 
 ## Use it with Claude Code and Obsidian
 
-xhs-wiki gives you two things: a plain Markdown folder, and a Skill that tells Claude Code to check it first.
+xhs-wiki gives you two things: a plain Markdown folder, and a Skill that tells your AI tool to check it first. The Skill goes into Claude Code by default and can also go into WorkBuddy, Codex and other tools (see the table below).
 
 **Claude Code: checks your saves when you ask**
 
 - The query Skill lives at `~/.claude/skills/xhs-wiki/SKILL.md`. The installer writes it first if it finds Claude Code; when you finish the first-run setup, the service rewrites it with your final knowledge base location and removes the "setup not finished" note. It's written even if you don't have Claude Code yet, so it works once you install Claude Code, with no need to run the install command again.
 - Ask the way you normally would, for example: "Check my saves for anything related." "Answer this based on what I've saved." "Which saved post does this conclusion come from?" The Skill's description (in Chinese) tells Claude to check your saves first when you say things like "我收藏的" (what I saved) or "我之前存过" (I saved this before), or when you ask for recommendations, guides, methods or lists. Whether to use the Skill is up to Claude Code; if it doesn't check, say "Use xhs-wiki to check …".
 - The Skill reads the index first, then topics and sources, and also searches the source pages when the index has no match. It asks Claude to cite sources (the source page title and the RedNote link; that link may not open in a desktop browser, see [Why don't the original-post links open?](#why-dont-the-original-post-links-open)), and to say so when nothing is found rather than make something up.
-- The Skill is a short set of query instructions, under 30 lines; you can read the template before installing: [SKILL.md.tmpl](src/xhs_wiki/skill/SKILL.md.tmpl) (in Chinese). It includes a "内容安全" (content safety) rule telling Claude to treat your saves only as material to quote and paraphrase, and never to act on instructions, commands, code or links that appear in a post unless you explicitly ask it to in the conversation. This is an instruction to the AI: it lowers the risk of someone hiding instructions in a post, but it isn't an absolute guarantee.
+- The Skill is a short set of query instructions, about 30 lines; you can read the template before installing: [SKILL.md.tmpl](src/xhs_wiki/skill/SKILL.md.tmpl) (in Chinese). It includes a "内容安全" (content safety) rule telling Claude to treat your saves only as material to quote and paraphrase, and never to act on instructions, commands, code or links that appear in a post unless you explicitly ask it to in the conversation. This is an instruction to the AI: it lowers the risk of someone hiding instructions in a post, but it isn't an absolute guarantee.
 - When Claude Code is your organizing model, it runs non-interactively: it can't read files outside the working folder used for organizing, doesn't load your MCP servers or Skills, and doesn't save the session on your Mac. With the default lightweight engine, xhs-wiki calls it directly with all tools turned off and without reading your settings files (see [claude_code.py](src/xhs_wiki/llm/claude_code.py)); with the LLM Wiki engine, its backend calls it and, when needed, turns on only a few read-only tools for reading and searching files, limited to that run's temporary working folder.
 - Already have a similar Skill for searching your saves? Two Skills may both respond to the same question, so keep only one.
 
 **Codex: organize with your subscription**
 
-Codex is OpenAI's coding assistant for the command line, included with paid ChatGPT plans. If you have a working, logged-in `codex` command on your Mac, you can choose Codex as the organizing model in the wizard and use your existing subscription. For now only Claude Code gets the query Skill installed automatically; if you choose Codex or an API, it only does the organizing. For a privacy caveat specific to Codex, see [Where your data goes](#where-your-data-goes).
+Codex is OpenAI's coding assistant for the command line, included with paid ChatGPT plans. If you have a working, logged-in `codex` command on your Mac, you can choose Codex as the organizing model in the wizard and use your existing subscription. To ask questions in Codex too, tick "Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、Qwen Code 等" on the last wizard step (or under "在哪些 AI 工具里提问", AI tools to ask in, in the console); the query Skill is then written to `~/.agents/skills/xhs-wiki/`, a folder these tools share. The author tested this on 2026-11-03 with codex-cli 0.166 and a made-up knowledge base: Codex found the Skill on its own, read the index and then the topic and source pages, and answered with sources; for something never saved it said so; when the knowledge base couldn't be read, it said it couldn't read it and asked for access, instead of claiming nothing was saved (in that test the Skill sat in the test project's `.agents/skills`, the same mechanism as `~/.agents/skills`). For a privacy caveat about organizing with Codex, see [Where your data goes](#where-your-data-goes).
+
+**Other AI tools: tick to install**
+
+SKILL.md is a common format that the tools below all understand; they just look in different folders. Tick a tool on the last wizard step or in the console and xhs-wiki writes the same Skill there; when you change the knowledge base location or engine, every ticked tool is updated; unticking removes the copy this tool wrote and leaves your own files alone. "本机有 xx" (found on this Mac) on the page is only a hint, based on whether the tool's app or config files exist (tools without a reliable clue show nothing); whether to install is up to you. A tool that's already open needs a restart to see a new Skill.
+
+**Only Claude Code and the Codex CLI have been tested.** Every other tool in the table is supported per its official docs (checked 2026-11-03) and has not been tested yet.
+
+| What to tick | Tools that read it | Where the Skill goes | Before asking | Tested? |
+|---|---|---|---|---|
+| Claude Code (ticked by default) | Claude Code; Cursor, OpenCode, Goose and Amp also read this folder | `~/.claude/skills/xhs-wiki/` | Just ask | Claude Code tested; the others not yet |
+| WorkBuddy | Tencent WorkBuddy | `~/.workbuddy/skills/xhs-wiki/` | WorkBuddy only reads folders you've authorized: below the input box, click "选择工作空间" (Select Workspace) → "打开本地文件夹" (Open Local Folder) and choose the knowledge base folder | Not yet tested |
+| Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、Qwen Code 等 (the shared folder) | Codex (CLI, IDE extension, ChatGPT desktop app), Cursor, Gemini CLI, GitHub Copilot, OpenClaw, Kimi Code, Qwen Code, newer Qoder, Zed, Devin Desktop (formerly Windsurf), OpenCode, Goose, Amp, Factory Droid | `~/.agents/skills/xhs-wiki/` (shared by these tools) | Gemini CLI, Copilot and Devin Desktop only read the workspace by default: start them in the knowledge base folder or add it to the workspace (in Gemini CLI, run `/directory add ~/XHS-Wiki`) | Codex CLI tested; the others not yet |
+| CodeBuddy | Tencent CodeBuddy | `~/.codebuddy/skills/xhs-wiki/` | Reading outside the working folder asks you first | Not yet tested (the CLI folder is documented; the IDE folder is inferred from the same docs) |
+| Trae / Trae CN | ByteDance Trae, international / China edition | `~/.trae/skills/xhs-wiki/` / `~/.trae-cn/skills/xhs-wiki/` | Just ask | Not yet tested |
+| Qoder | Alibaba Qoder | `~/.qoder/skills/xhs-wiki/` | Just ask (newer Qoder also reads the shared folder, so ticking one is enough) | Not yet tested |
+| Qoder CN（原通义灵码） | Qoder CN, formerly Tongyi Lingma | `~/.lingma/skills/xhs-wiki/` | Restart the IDE once after installing | Not yet tested |
+| Kiro | AWS Kiro | `~/.kiro/skills/xhs-wiki/` | Reading outside the workspace pops up an approval | Not yet tested |
+| Antigravity | Google Antigravity (app, IDE, CLI) | `~/.gemini/config/skills/xhs-wiki/` | Only the workspace is accessible by default: open the knowledge base folder as the workspace, or turn on Agent Non-Workspace File Access in settings | Not yet tested |
+| Cline | Cline | `~/.cline/skills/xhs-wiki/` | Reading outside the workspace asks you first | Not yet tested |
+
+WorkBuddy's product docs only say uploaded or created skills are kept in the user configuration folder; the exact `~/.workbuddy/skills` location comes from Tencent SkillHub's install guide and install code in Tencent's official GitHub repositories. If xhs-wiki doesn't show up in WorkBuddy's skills list after installing, just tell it in the chat: "First read `~/.workbuddy/skills/xhs-wiki/SKILL.md` and follow its steps to check my saves." Other tools that can read local files but don't support Skills can be pointed at `~/.claude/skills/xhs-wiki/SKILL.md` the same way. The Skill says that when the knowledge base folder can't be read, the AI should tell you it can't read the knowledge base and ask you to grant access, rather than say nothing was saved.
 
 **Obsidian: open the knowledge base folder**
 
@@ -234,7 +255,7 @@ With Codex there's one more thing to know. xhs-wiki still sends it only the extr
 
 Login uses a separate Chrome profile and doesn't read anything else from your everyday browser. API keys are never written to `settings.json`. This repository contains only the tool, never anyone's saves, knowledge base or topic categories.
 
-When you ask Claude Code a question, whatever it reads from your knowledge base becomes part of that conversation and goes to the model service Claude Code uses, just as when you ask it to read any other file on your Mac.
+When you ask an AI tool a question, whatever it reads from your knowledge base becomes part of that conversation and goes to the model service it uses (Anthropic for Claude Code, OpenAI for Codex, whichever model you picked in WorkBuddy), just as when you ask it to read any other file on your Mac.
 
 If a post is later deleted or hidden by its author, the text already organized into your knowledge base stays on your Mac. It's for your own reference only; please don't redistribute it.
 
@@ -247,7 +268,7 @@ Default locations (`~` is your home folder; these are the general defaults):
 | RedNote login state | `browser-profile/` inside the app folder above |
 | Speech models, originals being processed | `models/` and `work/` inside the app folder above |
 | Service logs | `~/Library/Logs/xhs-wiki/` |
-| Claude Code query Skill | `~/.claude/skills/xhs-wiki/SKILL.md` |
+| Query Skill | Claude Code: `~/.claude/skills/xhs-wiki/SKILL.md`; only if ticked: each tool's own skills folder, such as WorkBuddy's `~/.workbuddy/skills/xhs-wiki/` or `~/.agents/skills/xhs-wiki/` shared by Codex and others (full list in [Use it with Claude Code and Obsidian](#use-it-with-claude-code-and-obsidian)) |
 | API keys | macOS Keychain |
 
 ## Risks and disclaimer
@@ -303,7 +324,7 @@ Even without `--mirror cn`, Whisper has an automatic fallback: it tries Hugging 
 
 ## What the installer does
 
-The command in [Quick start](#quick-start) goes through these steps in order: check the macOS version and disk space → check for Google Chrome → check for uv (asking before installing it if it's missing) → create a separate Python 3.12 environment and install xhs-wiki (the remote install downloads a source archive, so no git is needed) → start the background service and open the console → write the query Skill (if Claude Code is detected) → create the `xhs-wiki` command (asking first). If you already have the repository files, you can instead go to the repository folder in Terminal and run the local installer:
+The command in [Quick start](#quick-start) goes through these steps in order: check the macOS version and disk space → check for Google Chrome → check for uv (asking before installing it if it's missing) → create a separate Python 3.12 environment and install xhs-wiki (the remote install downloads a source archive, so no git is needed) → start the background service and open the console → write the query Skill (if Claude Code is detected; an upgrade also refreshes any other AI tools you ticked) → create the `xhs-wiki` command (asking first). If you already have the repository files, you can instead go to the repository folder in Terminal and run the local installer:
 
 ```bash
 bash install.sh --from-local .
@@ -401,9 +422,9 @@ By default it runs every day at **03:00 Beijing time (UTC+8)** and downloads at 
 
 The run time you set there is Beijing time (UTC+8): the default 03:00 is 19:00 UTC the previous day. The next run and the run history that the console displays are shown in your Mac's own time zone.
 
-When something needs you (an expired login, for example), "待你处理" (Needs your attention) in the console explains why, and your Mac usually shows a system notification as well. The console also lists failed notes with their reasons for one-at-a-time retries, shows run history, and lets you change the organizing model or switch the speech model (see the [FAQ](#faq)).
+When something needs you (an expired login, for example), "待你处理" (Needs your attention) in the console explains why, and your Mac usually shows a system notification as well. The console also lists failed notes with their reasons for one-at-a-time retries, shows run history, and lets you change the organizing model, switch the speech model, or change which AI tools to ask in (see the [FAQ](#faq)).
 
-For how to ask in Claude Code and how the Skill searches, see [Use it with Claude Code and Obsidian](#use-it-with-claude-code-and-obsidian).
+For how to ask in Claude Code, WorkBuddy, Codex and other tools, and how the Skill searches, see [Use it with Claude Code and Obsidian](#use-it-with-claude-code-and-obsidian).
 
 <details>
 <summary>Command-line reference</summary>
@@ -436,7 +457,7 @@ That hasn't been tested. So far the tool has only been tested with RedNote accou
 
 ### Can I use it without Claude Code?
 
-You can organize without it, but asking questions with cited sources currently goes through Claude Code. Without Claude Code, choose Codex, the Anthropic API or an OpenAI-compatible API as the organizing model; the knowledge base is built just the same, and you can browse it in Obsidian or any editor. The query Skill is already written to `~/.claude/skills/xhs-wiki/` when you finish the first-run setup, so it's ready to use as soon as you install Claude Code.
+Yes. You can choose Codex, the Anthropic API or an OpenAI-compatible API as the organizing model, and asking questions with cited sources isn't limited to Claude Code either: tick Tencent's WorkBuddy, Codex, Cursor, Trae, CodeBuddy, OpenClaw or other tools on the last wizard step (or under "在哪些 AI 工具里提问" in the console), and the query Skill is written to their skills folders. Claude Code and the Codex CLI have been tested: they check your saves first, cite sources and say so when nothing is found; the other tools are supported per their official docs and not yet tested (list in [Use it with Claude Code and Obsidian](#use-it-with-claude-code-and-obsidian)). Without any AI tool, the knowledge base is built just the same, and you can browse it in Obsidian or any editor. The query Skill is already written to `~/.claude/skills/xhs-wiki/` when you finish the first-run setup, so it's ready to use as soon as you install Claude Code.
 
 ### Will it sort my saves into albums in the RedNote app?
 
@@ -444,7 +465,7 @@ No. xhs-wiki only reads your saves list and organizes the content into a knowled
 
 ### I can't find anything in my saves. How do I look things up with it?
 
-Ask in Claude Code, for example "Check my saves for …". The Skill reads the index first, then the topic and source pages, and answers with its sources. Without Claude Code, open the knowledge base folder in Obsidian and browse from `索引.md` by topic, or use your editor's full-text search: what was said in videos and the text on images have already been turned into text, so they're searchable too.
+Ask in Claude Code (or another AI tool with the Skill), for example "Check my saves for …". The Skill reads the index first, then the topic and source pages, and answers with its sources. Without an AI tool, open the knowledge base folder in Obsidian and browse from `索引.md` by topic, or use your editor's full-text search: what was said in videos and the text on images have already been turned into text, so they're searchable too.
 
 ### Can it turn my saved videos into text? Does it need the internet?
 
@@ -486,7 +507,7 @@ Downloads use the system's own curl, and when restarted after a network interrup
 
 ### I already have a similar Skill for searching my saves
 
-Two Skills may both respond to the same question, so keep only one. The xhs-wiki Skill lives at `~/.claude/skills/xhs-wiki/SKILL.md` by default.
+Two Skills may both respond to the same question, so keep only one. The xhs-wiki Skill lives at `~/.claude/skills/xhs-wiki/SKILL.md` by default; if you ticked other tools, also in those tools' own skills folders (see the table in [Use it with Claude Code and Obsidian](#use-it-with-claude-code-and-obsidian)). Some tools read two folders (Cursor reads the Claude Code one and the shared one; newer Qoder reads its own and the shared one), so with both ticked they may show two identical xhs-wiki entries; ticking one is enough.
 
 ### The console won't open, or asks me to verify my identity
 
@@ -546,7 +567,7 @@ If you have the repository files, you can also run this from the repository fold
 bash uninstall.sh
 ```
 
-The uninstaller first lists what it's going to delete and only goes ahead once you confirm: it stops the background service (both the LaunchAgent and a temporarily started service), deletes the LaunchAgent configuration and the app folder (including login state, processing records, speech models and working files), then removes the tool's log files, the xhs-wiki Skill and the `xhs-wiki` command. **Your knowledge base is kept by default.** To see what it would delete first, run `bash uninstall.sh --dry-run` (with the one-line command: `… | bash -s -- --dry-run`); it only prints the steps and deletes nothing.
+The uninstaller first lists what it's going to delete and only goes ahead once you confirm: it stops the background service (both the LaunchAgent and a temporarily started service), deletes the LaunchAgent configuration and the app folder (including login state, processing records, speech models and working files), then removes the tool's log files, the xhs-wiki Skill from each AI tool's skills folder, and the `xhs-wiki` command. **Your knowledge base is kept by default.** To see what it would delete first, run `bash uninstall.sh --dry-run` (with the one-line command: `… | bash -s -- --dry-run`); it only prints the steps and deletes nothing.
 
 To delete the knowledge base as well, run `bash uninstall.sh --yes --purge-kb`; if you installed with the one-line command and don't have the repository files, use `curl -fsSL https://raw.githubusercontent.com/tyr1105/xhs-wiki/main/uninstall.sh | bash -s -- --yes --purge-kb`. Both flags are required: `--purge-kb` alone stops with an error and deletes nothing, and `--yes` skips the confirmation and goes straight ahead. Purging only applies to a knowledge base that carries the `.xhs-wiki/` marker, and only deletes what the tool generated: `索引.md`, `暂缓.md`, `.xhs-wiki/`, and the **entire** `主题/` and `来源/` folders, including any files you put in those two folders. Files elsewhere in the knowledge base folder are kept, and the folder itself is removed only if it ends up empty. To check the scope first, run `bash uninstall.sh --dry-run --yes --purge-kb` (with the one-line command: `… | bash -s -- --dry-run --yes --purge-kb`); it only prints and deletes nothing.
 
@@ -560,9 +581,10 @@ So the author built a personal workflow first. It has now turned 1,100+ RedNote 
 
 ## Status and roadmap
 
-- **Available now:** one-command install (no Homebrew, git or ffmpeg; `--mirror cn` for networks in mainland China), a 5-step console wizard, daily pickup of new saves, on-device image text recognition and video transcription, four organizing-model options, the lightweight Markdown engine, the Claude Code query Skill, and cleanup of originals after verification.
+- **Available now:** one-command install (no Homebrew, git or ffmpeg; `--mirror cn` for networks in mainland China), a 6-step console wizard, daily pickup of new saves, on-device image text recognition and video transcription, four organizing-model options, the lightweight Markdown engine, the query Skill, and cleanup of originals after verification.
+- **Ask in more AI tools (since v0.3.0):** besides Claude Code, the query Skill can be ticked into Tencent's WorkBuddy and CodeBuddy, ByteDance's Trae, Alibaba's Qoder and Qoder CN (formerly Tongyi Lingma), AWS Kiro, Google Antigravity, Cline, and the folder shared by Codex, Cursor, Gemini CLI, GitHub Copilot, OpenClaw, Kimi, Qwen Code and others; uninstalling cleans them all up.
 - **LLM Wiki engine available (since v0.2.0):** the wizard downloads, verifies and configures its headless backend on demand (Apple silicon only; Claude Code or Codex only). Import, Update Wiki, light review and confirmation have been verified on a real machine. Since v0.2.1, generated pages are always in Simplified Chinese.
-- **Current limits:** macOS 13 or later only, and Intel Macs and macOS 13 haven't been verified on real hardware yet (the Intel automated tests do pass); end to end, the open-source version has been run with an import of the latest 20 saves, not yet with an import of hundreds; the console and the knowledge base are in Chinese only, and asking in English hasn't been systematically tested; only tested with RedNote accounts registered in mainland China; questions with cited answers currently go through the Claude Code query Skill, and if you choose Codex or an API, it only does the organizing; the original-post links in the knowledge base don't open in a desktop browser (see [Why don't the original-post links open?](#why-dont-the-original-post-links-open)).
+- **Current limits:** macOS 13 or later only, and Intel Macs and macOS 13 haven't been verified on real hardware yet (the Intel automated tests do pass); end to end, the open-source version has been run with an import of the latest 20 saves, not yet with an import of hundreds; the console and the knowledge base are in Chinese only, and asking in English hasn't been systematically tested; only tested with RedNote accounts registered in mainland China; the query Skill has only been tested in Claude Code and the Codex CLI, while WorkBuddy and the other tools are supported per their official docs and not yet tested; the original-post links in the knowledge base don't open in a desktop browser (see [Why don't the original-post links open?](#why-dont-the-original-post-links-open)).
 
 Changes in each version are listed in [CHANGELOG.md](CHANGELOG.md) (in Chinese).
 
