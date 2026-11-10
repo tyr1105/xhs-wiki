@@ -192,21 +192,22 @@ Codex 是 OpenAI 的编程助手命令行，ChatGPT 付费方案里包含。本�
 
 **其他 AI 工具：勾上就装好**
 
-SKILL.md 是一种通用格式，下面这些工具都认，区别只在去哪个目录找。在向导最后一步或控制台里勾选，xhs-wiki 就把同一份 Skill 写过去；改了知识库位置或引擎，勾选的工具会一起更新；取消勾选会撤掉本工具写的那份，你自己放的文件不动。页面上的“本机有 xx”只是提示（看的是这些工具的 App 或配置文件在不在，有的工具没有可靠的线索，就不显示），装不装由你决定。已经开着的工具重开一次才看得到新 Skill。
+SKILL.md 是一种通用格式，下面这些工具都认，区别只在去哪个目录找。在向导最后一步或控制台里勾选，xhs-wiki 就把同一份 Skill 写过去；改了知识库位置或引擎，勾选的工具会一起更新；取消勾选会撤掉本工具写的那份，你自己放的文件不动。xhs-wiki 写的 Skill 里有一行归属标记，只认这一份：那个位置要是已经有一份别人写的、也叫 xhs-wiki 的技能，不会覆盖也不会删除，页面会提示“已有别人写的同名技能”；技能文件夹是你自己建的符号链接时也不动它。页面上的“本机有 xx”只是提示（看的是这些工具的 App 或配置文件在不在，有的工具没有可靠的线索，就不显示），装不装由你决定。已经开着的工具重开一次才看得到新 Skill。
 
 **实测过的只有 Claude Code 和 Codex 命令行**，表里其他工具都是按各家官方文档（2026-11-03 核实）支持的，还没实测。
 
 | 勾哪一项 | 哪些工具会读 | Skill 写到哪 | 提问前 | 验证情况 |
 |---|---|---|---|---|
-| Claude Code（默认勾上） | Claude Code；Cursor、OpenCode、Goose、Amp 也读这里 | `~/.claude/skills/xhs-wiki/` | 直接问 | Claude Code 实测；其余还没实测 |
+| Claude Code（默认勾上） | Claude Code；Cursor、OpenCode、Goose、Amp、VS Code 里的 GitHub Copilot 也读这里 | `~/.claude/skills/xhs-wiki/` | 直接问 | Claude Code 实测；其余还没实测 |
 | WorkBuddy | 腾讯 WorkBuddy | `~/.workbuddy/skills/xhs-wiki/` | WorkBuddy 只读你授权过的文件夹：在输入框下方点“选择工作空间”→“打开本地文件夹”，选知识库文件夹 | 还没实测 |
-| Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、Qwen Code 等 | Codex（命令行、IDE 插件、ChatGPT 桌面版）、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi Code、Qwen Code、新版 Qoder、Zed、Devin Desktop（原 Windsurf）、OpenCode、Goose、Amp、Factory Droid | `~/.agents/skills/xhs-wiki/`（这些工具共用） | Gemini CLI、Copilot、Devin Desktop 默认只读工作区：在知识库文件夹里启动，或把知识库加进工作区（Gemini CLI 运行 `/directory add ~/XHS-Wiki`） | Codex 命令行实测；其余还没实测 |
+| Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、Qwen Code 等 | Codex（命令行、IDE 插件、ChatGPT 桌面版）、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi Code、Qwen Code、新版 Qoder、Zed、Devin Desktop（原 Windsurf）、OpenCode、Goose、Amp、Factory Droid | `~/.agents/skills/xhs-wiki/`（这些工具共用） | Gemini CLI、Copilot、Devin Desktop 默认只读工作区：在知识库文件夹里启动，或把知识库加进工作区（Gemini CLI 运行 `/directory add ~/XHS-Wiki`）。免费和 Google One 用户的 Gemini CLI 从 2026-06-18 起换成了 Antigravity CLI，它不读这个目录，请勾 Antigravity | Codex 命令行实测（Skill 放在项目级 `.agents/skills` 测的）；其余还没实测 |
 | CodeBuddy | 腾讯 CodeBuddy | `~/.codebuddy/skills/xhs-wiki/` | 读工作目录以外的文件会先问你 | 还没实测（命令行版目录官方写明，IDE 版是按同一套文档推断的） |
 | Trae / Trae CN | 字节 Trae 国际版 / 国内版 | `~/.trae/skills/xhs-wiki/` / `~/.trae-cn/skills/xhs-wiki/` | 直接问 | 还没实测 |
 | Qoder | 阿里 Qoder | `~/.qoder/skills/xhs-wiki/` | 直接问（新版也读上面的共用目录，勾一项就够） | 还没实测 |
-| Qoder CN（原通义灵码） | Qoder CN、通义灵码 | `~/.lingma/skills/xhs-wiki/` | 装好后重启一次 IDE | 还没实测 |
+| Qoder CN IDE（原通义灵码） | Qoder CN（原通义灵码）的 IDE 和编辑器插件 | `~/.lingma/skills/xhs-wiki/` | 装好后重启一次 IDE | 还没实测 |
+| Qoder CN 命令行版 | Qoder CN 的命令行工具 | `~/.qoder-cn/skills/xhs-wiki/` | 直接问 | 还没实测 |
 | Kiro | AWS Kiro | `~/.kiro/skills/xhs-wiki/` | 读工作区以外的文件会弹窗请你批准 | 还没实测 |
-| Antigravity | Google Antigravity（App、IDE、命令行） | `~/.gemini/config/skills/xhs-wiki/` | 默认只能访问工作区：把知识库文件夹作为工作区打开，或在设置里打开 Agent Non-Workspace File Access | 还没实测 |
+| Antigravity | Google Antigravity（App、IDE、Antigravity CLI；原来用 Gemini CLI 的免费和 Google One 用户也勾这一项） | `~/.gemini/config/skills/xhs-wiki/` | 默认只能访问工作区：把知识库文件夹作为工作区打开，或在设置里打开 Agent Non-Workspace File Access | 还没实测 |
 | Cline | Cline | `~/.cline/skills/xhs-wiki/` | 读工作区以外的文件会先问你 | 还没实测 |
 
 WorkBuddy 的产品文档只写了“上传或新建的技能存在用户配置目录”，`~/.workbuddy/skills` 这个具体位置来自腾讯 SkillHub 的安装说明和腾讯官方 GitHub 仓库里的安装代码；装好后在 WorkBuddy 的技能列表里没看到 xhs-wiki，可以在对话里直接说“先读一下 `~/.workbuddy/skills/xhs-wiki/SKILL.md`，按里面的步骤查我的收藏”。别的能读本机文件、但不认 Skill 的工具，也可以这样让它先读 `~/.claude/skills/xhs-wiki/SKILL.md`。Skill 里写着：读不到知识库文件夹时，直接告诉你“读不到知识库”，请你授权后再问，不会说成没收藏过。
@@ -326,7 +327,7 @@ bash install.sh --from-local .
 
 装好 LaunchAgent 后，macOS 可能弹出通知，提示添加了新的后台项目，显示的名字可能是 python3.12 而不是 xhs-wiki，这就是 xhs-wiki 的后台服务。如果在“系统设置 → 通用 → 登录项”（macOS 15 起叫“登录项与扩展”）里把它关掉，定时整理就不会再运行。
 
-安装检测到 Claude Code 命令或其配置目录时，会先写入查询 Skill；没检测到也没关系，完成首次设置时服务会写入（见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)）。
+安装检测到 Claude Code 命令或其配置目录时，会先写入查询 Skill；没检测到也没关系，完成首次设置时服务会写入（见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)）。升级时也会更新你勾选过的其他 AI 工具：哪个工具写不进去，会打印是哪个目录，安装照常完成；只有 Claude Code 的写不进去才会停下。
 
 脚本还会询问是否建立 `xhs-wiki` 命令入口（`~/.local/bin/xhs-wiki`）。若终端提示找不到命令，请确认 `~/.local/bin` 已加入 PATH（终端查找命令的目录列表），或用下面的完整路径代替 `xhs-wiki`：
 
@@ -481,7 +482,7 @@ API Key 保存在 **macOS 钥匙串**（系统保存凭据的地方），不写�
 
 ### 已经装过类似的收藏查询 Skill，怎么办？
 
-两个 Skill 可能同时响应同一问题，只保留一个。xhs-wiki 的 Skill 默认在 `~/.claude/skills/xhs-wiki/SKILL.md`；勾选了其他工具时，还在那些工具自己的技能目录里（见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)的表）。有的工具同时读两个目录（比如 Cursor 读 Claude Code 的和共用的，新版 Qoder 读自己的和共用的），两项都勾时可能看到两份一样的 xhs-wiki，勾其中一项就够。
+两个 Skill 可能同时响应同一问题，只保留一个。xhs-wiki 的 Skill 默认在 `~/.claude/skills/xhs-wiki/SKILL.md`；勾选了其他工具时，还在那些工具自己的技能目录里（见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)的表）。有的工具同时读两个目录（比如 Cursor 和 VS Code 里的 GitHub Copilot 读 Claude Code 的和共用的，新版 Qoder 读自己的和共用的），两项都勾时可能看到两份一样的 xhs-wiki，勾其中一项就够。
 
 ### 控制台打不开，或者提示“需要验证身份”，怎么办？
 
@@ -541,7 +542,7 @@ curl -fsSL https://raw.githubusercontent.com/tyr1105/xhs-wiki/main/uninstall.sh 
 bash uninstall.sh
 ```
 
-卸载脚本会先列出将要删除的内容，等你确认后才动手：停止后台服务（LaunchAgent 和用临时方式启动的服务都会停掉），删除 LaunchAgent 配置和程序目录（含登录状态、处理记录、语音模型和工作文件），再删掉本工具的日志文件、各 AI 工具技能目录里的 xhs-wiki Skill 和命令入口。**知识库默认保留。** 想先看看会删除什么，运行 `bash uninstall.sh --dry-run`（远程命令写成 `… | bash -s -- --dry-run`），它只打印步骤、不删除任何东西。
+卸载脚本会先列出将要删除的内容，等你确认后才动手：停止后台服务（LaunchAgent 和用临时方式启动的服务都会停掉），删除 LaunchAgent 配置和程序目录（含登录状态、处理记录、语音模型和工作文件），再删掉本工具的日志文件、各 AI 工具技能目录里的 xhs-wiki Skill 和命令入口。删 Skill 前会核对是不是 xhs-wiki 写的：别人写的同名技能会列在“不会删除”里原样保留；除 Claude Code 以外的技能目录里，xhs-wiki 是符号链接、或者上级目录进不去的，也跳过并说明是哪个目录，不影响其余部分卸载。Claude Code 的 Skill 目录是符号链接时，卸载会先停下、什么都不删，报错里写着这个链接的位置：确认是你自己建的，只删掉这个链接本身（不会删到它指向的内容），再重新卸载。**知识库默认保留。** 想先看看会删除什么，运行 `bash uninstall.sh --dry-run`（远程命令写成 `… | bash -s -- --dry-run`），它只打印步骤、不删除任何东西。
 
 如需连知识库一起清理，运行 `bash uninstall.sh --yes --purge-kb`；用一条命令安装、手边没有仓库文件的，写成 `curl -fsSL https://raw.githubusercontent.com/tyr1105/xhs-wiki/main/uninstall.sh | bash -s -- --yes --purge-kb`。两个参数必须同时带：只带 `--purge-kb` 会直接报错，不删除任何东西；`--yes` 表示跳过确认、直接执行。清理只针对带 `.xhs-wiki/` 标记的知识库，只删本工具生成的内容：`索引.md`、`暂缓.md`、`.xhs-wiki/`，以及**整个** `主题/` 和 `来源/` 文件夹，你放进这两个文件夹里的文件也会一起删掉；知识库文件夹里其他位置的文件会保留，文件夹清空了才删除它本身。想先核对范围，运行 `bash uninstall.sh --dry-run --yes --purge-kb`（远程命令写成 `… | bash -s -- --dry-run --yes --purge-kb`），只打印、不删除。
 
@@ -556,7 +557,7 @@ bash uninstall.sh
 ## 现状与路线图
 
 - **现在可以用：** 一条命令安装（不需要 Homebrew、git、ffmpeg；国内网络可加 `--mirror cn`）、控制台 6 步向导、每天定时跟进新收藏、本机识别图片文字和转写视频、四种整理模型、轻量 Markdown 引擎、查询 Skill、原件核验后清理。
-- **多个 AI 工具都能提问（v0.3.0 起）：** 查询 Skill 除了 Claude Code，还能勾选装进腾讯 WorkBuddy、CodeBuddy，字节 Trae，阿里 Qoder、Qoder CN（原通义灵码），AWS Kiro，Google Antigravity，Cline，以及 Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、Qwen Code 等共用的目录；卸载时一并清理。
+- **多个 AI 工具都能提问（v0.3.0 起）：** 查询 Skill 除了 Claude Code，还能勾选装进腾讯 WorkBuddy、CodeBuddy，字节 Trae，阿里 Qoder、Qoder CN（原通义灵码，IDE 和命令行版），AWS Kiro，Google Antigravity，Cline，以及 Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、Qwen Code 等共用的目录；只碰本工具写的那份，卸载时一并清理。
 - **LLM Wiki 引擎可用（v0.2.0 起）：** 向导按需下载、校验并配置无窗口后台（仅 Apple 芯片，整理模型仅支持 Claude Code 和 Codex），已在真机上跑通导入、Update Wiki、轻量检查和确认；v0.2.1 起整理出的页面固定用简体中文。
 - **目前的限制：** 只支持 macOS 13 或更新版本，Intel 机型和 macOS 13 还没有真机验证（Intel 的自动测试已经通过）；开源版完整跑通过的是导入最近 20 条，几百条以上的大批量导入还没有完整实测过；控制台只有中文界面；查询 Skill 只在 Claude Code 和 Codex 命令行里实测过，WorkBuddy 等其他工具按官方文档支持，还没实测；知识库里的原帖链接在电脑浏览器里打不开（见[原帖链接打不开？](#原帖链接打不开)）。
 

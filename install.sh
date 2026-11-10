@@ -232,15 +232,20 @@ ASR_MODEL="whisper"
   PLIST_PATH="$HOME/Library/LaunchAgents/$LAUNCH_AGENT_LABEL.plist"
   validate_app_home
   LOG_DIR="${XHS_WIKI_LOG_DIR:-$HOME/Library/Logs/xhs-wiki}"
-  SKILLS_ROOT="${XHS_WIKI_SKILLS_ROOT:-$HOME/.claude/skills}"
-  # 其他 AI 工具（WorkBuddy、Codex 等）所在的主目录：它们的技能目录
-  # （~/.workbuddy/skills、~/.agents/skills 等）都在它下面，装不装由用户在
-  # 控制台勾选。隔离测试时指到测试目录，并和上面几个一起写进后台服务的
-  # 环境，保证服务也只写测试目录。
+  # 各 AI 工具所在的主目录：所有技能目录（~/.claude/skills、
+  # ~/.workbuddy/skills、~/.agents/skills 等）都在它下面，装哪些由用户在
+  # 控制台勾选。正式安装不设，就是 ${HOME}。XHS_WIKI_TOOLS_HOME 只给隔离
+  # 测试用：用户自己设了才导出、才写进后台服务的环境（见第 5 步）——
+  # 后台服务一看到这个变量就按隔离模式检测，只看它下面的 Applications，
+  # 正式安装要是也写进去，系统"应用程序"里的 App 就都检测不到了。
   TOOLS_HOME="${XHS_WIKI_TOOLS_HOME:-$HOME}"
+  # Claude Code 的技能目录：XHS_WIKI_SKILLS_ROOT 单独指定，否则跟着 TOOLS_HOME
+  # （和 uninstall.sh、skill.py 的默认值一致：只设 TOOLS_HOME 做隔离安装时，
+  # 也不会写进真实的 ~/.claude/skills）。
+  SKILLS_ROOT="${XHS_WIKI_SKILLS_ROOT:-$TOOLS_HOME/.claude/skills}"
   CHROME_APP="${XHS_WIKI_CHROME_APP:-/Applications/Google Chrome.app}"
-  export XHS_WIKI_HOME="$APP_HOME" XHS_WIKI_LOG_DIR="$LOG_DIR" XHS_WIKI_SKILLS_ROOT="$SKILLS_ROOT" \
-    XHS_WIKI_TOOLS_HOME="$TOOLS_HOME"
+  export XHS_WIKI_HOME="$APP_HOME" XHS_WIKI_LOG_DIR="$LOG_DIR" XHS_WIKI_SKILLS_ROOT="$SKILLS_ROOT"
+  if [ -n "${XHS_WIKI_TOOLS_HOME:-}" ]; then export XHS_WIKI_TOOLS_HOME; fi
   SERVE_COMMAND="env XHS_WIKI_HOME=$(quote_arg "$APP_HOME") XHS_WIKI_LOG_DIR=$(quote_arg "$LOG_DIR") $(quote_arg "$VENV_BIN/xhs-wiki") serve"
   OPEN_COMMAND="env XHS_WIKI_HOME=$(quote_arg "$APP_HOME") $(quote_arg "$VENV_BIN/xhs-wiki") open"
 
@@ -445,6 +450,8 @@ data.setdefault('EnvironmentVariables', {}).update({
     name: os.environ[name]
     for name in ('HOME', 'XHS_WIKI_HOME', 'XHS_WIKI_LOG_DIR', 'XHS_WIKI_SKILLS_ROOT',
                  'XHS_WIKI_TOOLS_HOME')
+    # XHS_WIKI_TOOLS_HOME 只有用户自己设了才在环境里；没有的键不写。
+    if name in os.environ
 })
 # 日志位置也写入 plist，确保 launchd 打开日志时与已创建的目录一致。
 data['StandardOutPath'] = str(Path(os.environ['XHS_WIKI_LOG_DIR']) / 'daemon.log')
@@ -482,7 +489,9 @@ PY
   # 按设置里勾选的 AI 工具写入（默认只有 Claude Code；升级时顺带把控制台里
   # 勾选过的 WorkBuddy 等也更新成新版本）。这一步只写不删：取消勾选由
   # 控制台处理。没检测到 Claude Code 时照旧跳过它的目录，其他勾选的工具
-  # 照常写（命令行参数里列出的位置名会从勾选里去掉）。
+  # 照常写（命令行参数里列出的位置名会从勾选里去掉）。具体逻辑在
+  # skill.installer_sync：哪个工具没写成功会逐个打印出来；只有 Claude Code
+  # 写失败才让安装停下（和以前一样），其他工具失败只提示、继续往下装。
   if [ "$DRY_RUN" = "yes" ]; then
     echo "    检测到 Claude Code 后写入 $SKILLS_ROOT/xhs-wiki/SKILL.md；控制台里勾选过的其他 AI 工具一并更新"
   else
@@ -491,7 +500,7 @@ PY
       SKIP_SKILL_TARGET="claude_code"
       echo "    没检测到 Claude Code，跳过 Claude Code 的 Skill"
     fi
-    run "$VENV_PYTHON" -P -c 'import sys; from xhs_wiki import config, skill; from xhs_wiki.store import ServiceStore; settings = ServiceStore(config.app_home()).load_settings(); settings["skill_targets"] = [t for t in settings["skill_targets"] if t not in sys.argv[1:]]; sys.exit(1 if "failed" in skill.sync(settings).values() else 0)' $SKIP_SKILL_TARGET || die "Skill 写入失败" "检查技能目录（$SKILLS_ROOT 等）是否可写以及上方错误"
+    run "$VENV_PYTHON" -P -c 'import sys; from xhs_wiki import skill; sys.exit(skill.installer_sync(sys.argv[1:]))' $SKIP_SKILL_TARGET || die "Claude Code 的 Skill 写入失败" "检查 $SKILLS_ROOT 是否可写以及上方提示"
   fi
   note "步骤 8/9 建立命令软链接 ~/.local/bin/xhs-wiki"
   if [ "$CREATE_LINK" = "yes" ]; then

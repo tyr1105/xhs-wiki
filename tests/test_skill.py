@@ -240,11 +240,16 @@ class TestDaemonSync(unittest.TestCase):
         import threading
         import types
         from xhs_wiki import daemon
+        from xhs_wiki.store import SKILL_TARGETS
+        others = {target: Path(self.tmp.name) / "tools" / target
+                  for target in SKILL_TARGETS if target != "claude_code"}
+        others.update({"workbuddy": Path(self.tmp.name) / "wb",
+                       "agents": Path(self.tmp.name) / "agents"})
         stub = types.SimpleNamespace(
             skills_root=skills_root,
-            skill_roots={"workbuddy": Path(self.tmp.name) / "wb",
-                         "agents": Path(self.tmp.name) / "agents"},
-            _skill_lock=threading.RLock())
+            skill_roots=others,
+            _skill_lock=threading.RLock(),
+            _skill_last_results={})
         stub.skill_target_roots = daemon.ServiceServer.skill_target_roots.__get__(stub)
         return daemon.ServiceServer.sync_skill.__get__(stub)
 

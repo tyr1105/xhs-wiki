@@ -100,18 +100,53 @@ same_or_inside() {
   return 1
 }
 
-# 任何可删除目录都不能是主目录、常用系统目录或它们的上级。
-# 同时比较物理路径和磁盘身份，防止通过 ../、父目录符号链接、大小写
-# 不同的写法或 /System/Volumes/Data 别名绕过保护。
-protected_path() {
-  local target="$1" protected
-  [ "$target" != / ] || return 0
+# 受保护目录的物理路径，以及它们自己和每一级上级目录的磁盘身份，第一次
+# 用到时算好一次。要检查的路径有十几个（程序目录、日志目录、各 AI 工具的
+# 技能目录）；以前每检查一个都把受保护目录重新解析一遍、再逐级比较身份，
+# 每一步都要另起一个小进程，卸载要等好几秒到几十秒。
+# PROTECTED_STATE：空 = 还没算；ready = 算好了；unknown = 有受保护目录解析
+# 不了（这时一律当成受保护，和以前一样保守）。PROTECTED_IDS 每行一个身份。
+PROTECTED_STATE=""
+PROTECTED_PATHS=()
+PROTECTED_IDS=$'\n'
+prepare_protected_paths() {
+  local protected level level_id walked=$'\n'
+  [ -z "$PROTECTED_STATE" ] || return 0
+  PROTECTED_STATE="ready"
   for protected in /Users /System/Volumes/Data "$HOME" "$HOME/Documents" "$HOME/Desktop" \
       "$HOME/Downloads" "$HOME/Movies" "$HOME/Music" "$HOME/Pictures" "$HOME/Public" \
       "$HOME/Library" "$HOME/Library/Application Support"; do
-    protected="$(canonical_path "$protected")" || return 0
-    same_or_inside "$target" "$protected" && return 0
+    if ! protected="$(canonical_path "$protected")"; then PROTECTED_STATE="unknown"; continue; fi
+    PROTECTED_PATHS+=("$protected")
+    level="$protected"
+    while :; do
+      # 这几个受保护目录大多共用上级（主目录和它往上的各级）：走到已经
+      # 记过的那一级，再往上也都记过了，不用重复查。
+      case "$walked" in *$'\n'"$level"$'\n'*) break ;; esac
+      walked="${walked}${level}"$'\n'
+      if level_id="$(file_identity "$level")"; then PROTECTED_IDS="${PROTECTED_IDS}${level_id}"$'\n'; fi
+      [ "$level" != / ] || break
+      # 用参数展开去掉最后一级（相当于 dirname，但不用另起子进程）。
+      level="${level%/*}"; [ -n "$level" ] || level=/
+    done
   done
+}
+
+# 任何可删除目录都不能是主目录、常用系统目录或它们的上级。
+# 同时比较物理路径和磁盘身份，防止通过 ../、父目录符号链接、大小写
+# 不同的写法或 /System/Volumes/Data 别名绕过保护。和逐个调用
+# same_or_inside "$target" <受保护目录> 的结果完全一样：先比字符串，
+# 再看 target 的身份是不是某个受保护目录自己或它的某一级上级。
+protected_path() {
+  local target="$1" protected target_id
+  [ "$target" != / ] || return 0
+  prepare_protected_paths
+  [ "$PROTECTED_STATE" = "ready" ] || return 0
+  for protected in "${PROTECTED_PATHS[@]}"; do
+    case "$protected/" in "$target/"*) return 0 ;; esac
+  done
+  target_id="$(file_identity "$target")" || return 1
+  case "$PROTECTED_IDS" in *$'\n'"$target_id"$'\n'*) return 0 ;; esac
   return 1
 }
 
@@ -270,25 +305,57 @@ remove_log_files() {
 # 本工具就往哪个写过 xhs-wiki/SKILL.md）：Claude Code 的目录，加上下面
 # 这些相对"其他 AI 工具主目录"（默认就是 ${HOME}）的目录。卸载时全都查一遍。
 # 这份清单要和 src/xhs_wiki/skill.py 的 TARGET_DIRS 一致（测试会核对）。
-EXTRA_SKILL_DIRS=(".workbuddy/skills" ".agents/skills" ".codebuddy/skills" ".trae/skills" ".trae-cn/skills" ".qoder/skills" ".lingma/skills" ".kiro/skills" ".gemini/config/skills" ".cline/skills")
+EXTRA_SKILL_DIRS=(".workbuddy/skills" ".agents/skills" ".codebuddy/skills" ".trae/skills" ".trae-cn/skills" ".qoder/skills" ".lingma/skills" ".qoder-cn/skills" ".kiro/skills" ".gemini/config/skills" ".cline/skills")
 
-# 每个目录同样只删本工具写的 SKILL.md（和写入中断时可能留下的 .skill-*
-# 临时文件），目录清空后才删除目录本身。
-# 环境变量指错时，<它>/xhs-wiki 可能恰好是用户自己的文件夹。
+# 归属标记：本工具 v0.3 起写的 SKILL.md，frontmatter 后面都有这一行
+# （和 src/xhs_wiki/skill.py 的 OWNER_MARKER 是同一行，测试会核对）。
+OWNER_MARKER='<!-- managed-by: xhs-wiki -->'
+
+# 这份 SKILL.md 是不是本工具写的（和 skill.py 的 ownership 同一套规则）：
+# - 带归属标记；或者
+# - v0.1~v0.2 写的旧文件（那时还没有标记）：第 1 行是 ---、第 2 行是
+#   name: xhs-wiki，正文里有模板一直没变的两个标题。
+# 其余一律当成别人的：用户自己写的、别的项目恰好同名的、SKILL.md 本身是
+# 符号链接的（本工具从不建链接）。这些不列进删除清单，也绝不删除。
+# 用系统自带的 grep 和 sed（macOS 的 bash 3.2 下也能用），只读不改。
+skill_file_is_ours() {
+  local file="$1"
+  [ -f "$file" ] && [ ! -L "$file" ] || return 1
+  if /usr/bin/grep -qxF -- "$OWNER_MARKER" "$file" 2>/dev/null; then return 0; fi
+  [ "$(/usr/bin/sed -n 1p "$file" 2>/dev/null)" = '---' ] &&
+    [ "$(/usr/bin/sed -n 2p "$file" 2>/dev/null)" = 'name: xhs-wiki' ] &&
+    /usr/bin/grep -qxF -- '# 小红书收藏知识库' "$file" 2>/dev/null &&
+    /usr/bin/grep -qxF -- '## 内容安全（先读这一段）' "$file" 2>/dev/null
+}
+
+# 每个目录只删本工具写的 SKILL.md（按上面的规则核对归属）和写入中断时
+# 可能留下的 .skill-* 临时文件，目录清空后才删除目录本身。
+# 不是本工具写的 SKILL.md 原样保留，整个文件夹都不动——那里可能是用户
+# 自己的同名技能；环境变量指错时，<它>/xhs-wiki 也可能恰好是用户的文件夹。
+# 某一处删不掉（比如没有写权限）只提示，不影响其他目录。
 remove_skill_files() {
   local leftover dir
   for dir in "${SKILL_DIRS[@]}"; do
-    if [ "$DRY_RUN" = "yes" ]; then
-      echo "    将删除 $dir/SKILL.md（如果有）；目录清空后才删除目录本身"
+    if skill_file_is_ours "$dir/SKILL.md"; then
+      if [ "$DRY_RUN" = "yes" ]; then
+        echo "    将删除 $dir/SKILL.md；目录清空后才删除目录本身"
+        continue
+      fi
+      run rm -f -- "$dir/SKILL.md" ||
+        echo "    删除失败，已保留：$dir/SKILL.md（检查这个目录的权限后可以手动删掉）"
+    elif [ -e "$dir/SKILL.md" ] || [ -L "$dir/SKILL.md" ]; then
+      if [ "$DRY_RUN" = "yes" ]; then
+        echo "    不是 xhs-wiki 写的，不会删：$dir/SKILL.md"
+      else
+        echo "    不是 xhs-wiki 写的，已保留：$dir/SKILL.md"
+      fi
       continue
     fi
-    if [ -e "$dir/SKILL.md" ] || [ -L "$dir/SKILL.md" ]; then
-      run rm -f -- "$dir/SKILL.md"
-    fi
+    [ "$DRY_RUN" = "no" ] || continue
     for leftover in "$dir"/.skill-*; do
-      if [ -e "$leftover" ] || [ -L "$leftover" ]; then run rm -f -- "$leftover"; fi
+      if [ -e "$leftover" ] || [ -L "$leftover" ]; then run rm -f -- "$leftover" || true; fi
     done
-    if [ -d "$dir" ] && [ -z "$(ls -A -- "$dir")" ]; then run rmdir -- "$dir"; fi
+    if [ -d "$dir" ] && [ -z "$(ls -A -- "$dir" 2>/dev/null)" ]; then run rmdir -- "$dir" || true; fi
     if [ -d "$dir" ]; then echo "    Skill 目录里还有其他文件，目录已保留：$dir"; fi
   done
 }
@@ -332,25 +399,40 @@ main() {
   LAUNCH_AGENT_LABEL="io.github.xhs-wiki.service"
   LOG_DIR="$(expand_home "${XHS_WIKI_LOG_DIR:-$HOME/Library/Logs/xhs-wiki}")" || die log_dir_invalid '日志目录路径无效。'
   # 各 AI 工具的技能目录（见 remove_skill_files 上方的说明），第一个是
-  # Claude Code 的。和 install.sh 一致：XHS_WIKI_TOOLS_HOME 改写其他工具
-  # 所在的主目录，XHS_WIKI_SKILLS_ROOT 单独改写 Claude Code 的目录。
+  # Claude Code 的。和 install.sh、skill.py 的默认值完全一致：
+  # XHS_WIKI_TOOLS_HOME（只给测试和隔离安装用）改写所有 AI 工具所在的
+  # 主目录，包括 Claude Code；XHS_WIKI_SKILLS_ROOT 再单独改写 Claude Code 的目录。
   tools_home="$(expand_home "${XHS_WIKI_TOOLS_HOME:-$HOME}")" || die skill_dir_invalid 'AI 工具主目录（XHS_WIKI_TOOLS_HOME）路径无效。'
-  SKILL_DIRS=()
-  skill_dir="$(expand_home "${XHS_WIKI_SKILLS_ROOT:-$tools_home/.claude/skills}/xhs-wiki")" || die skill_dir_invalid 'Skill 目录路径无效。'
-  SKILL_DIRS+=("$skill_dir")
-  for entry in "${EXTRA_SKILL_DIRS[@]}"; do
-    SKILL_DIRS+=("$tools_home/$entry/xhs-wiki")
-  done
+  skill_dir="$(expand_home "${XHS_WIKI_SKILLS_ROOT:-$tools_home/.claude/skills}/xhs-wiki")" || die skill_dir_invalid 'Claude Code 的 Skill 目录（XHS_WIKI_SKILLS_ROOT）路径无效。'
   # 删除参数保留原路径，绝不能把末级符号链接解析成目标后再删目标。
   # 去掉末尾斜杠才能可靠判断目录链接；遇到链接直接停下，交给用户核对。
   while [ "$LOG_DIR" != / ] && [ "${LOG_DIR%/}" != "$LOG_DIR" ]; do LOG_DIR="${LOG_DIR%/}"; done
   [ ! -L "$LOG_DIR" ] || die log_dir_unsafe '日志目录是符号链接，已拒绝卸载。'
-  for skill_dir in "${SKILL_DIRS[@]}"; do
-    [ ! -L "$skill_dir" ] || die skill_dir_unsafe "Skill 目录是符号链接，已拒绝卸载：$(quote_arg "$skill_dir")"
-  done
   log_check_path="$(canonical_path "$LOG_DIR")" || die log_dir_invalid '日志目录路径无效。'
-  for skill_dir in "${SKILL_DIRS[@]}"; do
-    skill_check_path="$(canonical_path "$skill_dir")" || die skill_dir_invalid 'Skill 目录路径无效。'
+  # Claude Code 的目录照旧严格检查（v0.2 起就是这样）：是符号链接或者
+  # 路径解析不了，整个卸载先停下，什么都不删。报错带上路径和处理办法。
+  [ ! -L "$skill_dir" ] ||
+    die skill_dir_unsafe "Claude Code 的 Skill 目录是符号链接，已拒绝卸载：$(quote_arg "$skill_dir")。确认这个链接是你自己建的，就只删掉链接本身（不会删到它指向的内容）：rm -- $(quote_arg "$skill_dir")，再重新卸载。"
+  skill_check_path="$(canonical_path "$skill_dir")" ||
+    die skill_dir_invalid "无法检查 Claude Code 的 Skill 目录：$(quote_arg "$skill_dir")。请确认它的上级目录你有访问权限，再重新卸载。"
+  SKILL_DIRS=("$skill_dir")
+  skill_check_paths=("$skill_check_path")
+  # 其他 AI 工具的目录：用户多半从没勾选过，不能因为其中一个有问题就整个
+  # 卸载不了。xhs-wiki 本身是符号链接的（比如以前自己链到了 Claude Code
+  # 的目录），和控制台撤回时一样跳过、不顺着链接删；上级目录进不去、
+  # 没法检查的也跳过。跳过的都列出来，让用户知道要自己看一眼。
+  SKILL_NOTES=""
+  for entry in "${EXTRA_SKILL_DIRS[@]}"; do
+    skill_dir="$tools_home/$entry/xhs-wiki"
+    if [ -L "$skill_dir" ]; then
+      SKILL_NOTES="${SKILL_NOTES}    - 是符号链接，没有动它：${skill_dir}（卸载后它可能指向空处；确认用不着了，删掉这个链接本身即可）"$'\n'
+      continue
+    fi
+    if ! skill_check_path="$(canonical_path "$skill_dir")"; then
+      SKILL_NOTES="${SKILL_NOTES}    - 无法检查，已跳过：${skill_dir}（上级目录没有访问权限）"$'\n'
+      continue
+    fi
+    SKILL_DIRS+=("$skill_dir")
     skill_check_paths+=("$skill_check_path")
   done
   BIN_LINK="$HOME/.local/bin/xhs-wiki"
@@ -367,7 +449,8 @@ main() {
   validate_app_home
   protected_path "$log_check_path" && die log_dir_unsafe '日志目录指向受保护目录，已拒绝卸载。'
   for skill_check_path in "${skill_check_paths[@]}"; do
-    protected_path "$skill_check_path" && die skill_dir_unsafe 'Skill 目录指向受保护目录，已拒绝卸载。'
+    protected_path "$skill_check_path" &&
+      die skill_dir_unsafe "Skill 目录指向受保护目录，已拒绝卸载：$(quote_arg "$skill_check_path")"
   done
   KB_ROOT_UNKNOWN="no"
   if kb_value="$(read_kb_root)"; then
@@ -386,7 +469,7 @@ main() {
   fi
   for skill_check_path in "${skill_check_paths[@]}"; do
     if same_or_inside "$skill_check_path" "$KB_ROOT"; then
-      die kb_root_in_install_files '知识库位于日志或 Skill 目录内；请先迁出知识库，再卸载。'
+      die kb_root_in_install_files "知识库位于 Skill 目录内：$(quote_arg "$skill_check_path")；请先迁出知识库，再卸载。"
     fi
   done
   if [ "$DRY_RUN" = "yes" ]; then
@@ -401,12 +484,24 @@ main() {
   fi
   if plist_belongs_to_app; then plan="${plan}    - LaunchAgent 配置：$PLIST_PATH"$'\n'; fi
   if log_files_present; then plan="${plan}    - 日志文件：$LOG_DIR 里的 ${LOG_FILES}"$'\n'; fi
+  # 查询 Skill 只列本工具写的（核对归属，见 skill_file_is_ours）；同名但
+  # 不是本工具写的，列进"不会删除"。
   for skill_dir in "${SKILL_DIRS[@]}"; do
-    if [ -e "$skill_dir/SKILL.md" ]; then plan="${plan}    - 查询 Skill：$skill_dir/SKILL.md"$'\n'; fi
+    if skill_file_is_ours "$skill_dir/SKILL.md"; then
+      plan="${plan}    - 查询 Skill：$skill_dir/SKILL.md"$'\n'
+    elif [ -e "$skill_dir/SKILL.md" ] || [ -L "$skill_dir/SKILL.md" ]; then
+      SKILL_NOTES="${SKILL_NOTES}    - 不是 xhs-wiki 写的同名技能，已保留：$skill_dir/SKILL.md"$'\n'
+    fi
   done
   if bin_link_belongs_to_app; then plan="${plan}    - 命令链接：$BIN_LINK"$'\n'; fi
   if [ "$PURGE_KB" = "yes" ]; then
     plan="${plan}    - 知识库里本工具生成的内容：$KB_ROOT 下的 索引.md、暂缓.md、主题/、来源/、.xhs-wiki/"$'\n'
+  fi
+  # 不删的也先列出来（别人的同名技能、跳过的链接和进不去的目录），
+  # 用户知道哪些要自己看一眼；放在"将要删除"前面，确认问的就是紧挨着的那张清单。
+  if [ -n "$SKILL_NOTES" ]; then
+    echo '不会删除（需要的话请自己处理）：'
+    printf '%s' "$SKILL_NOTES"
   fi
   # 所有等待回答都放在任何停止和删除之前，拒绝或无终端时保持原状。
   if [ -n "$plan" ]; then

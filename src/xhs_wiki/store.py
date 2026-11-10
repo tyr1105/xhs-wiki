@@ -86,12 +86,12 @@ ASR_MODELS = ("sensevoice", "whisper")
 # - agents：Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、
 #   Qwen Code 等共用的 ~/.agents/skills；
 # - 后面几个是各自单独有目录的工具（控制台里收在"更多 AI 工具"下面）：
-#   codebuddy、trae（国际版）、trae_cn（国内版）、qoder、lingma（Qoder CN，
-#   原通义灵码）、kiro、antigravity、cline。
+#   codebuddy、trae（国际版）、trae_cn（国内版）、qoder、lingma（Qoder CN 的
+#   IDE 和插件，原通义灵码）、qoder_cn_cli（Qoder CN 命令行）、kiro、antigravity、cline。
 # 顺序就是页面上的显示顺序。放在这里（而不是 skill.py）是因为设置校验
 # 要用它，skill.py 反过来要导入本模块；写在一处，两边永远一致。
 SKILL_TARGETS = ("claude_code", "workbuddy", "agents",
-                 "codebuddy", "trae", "trae_cn", "qoder", "lingma",
+                 "codebuddy", "trae", "trae_cn", "qoder", "lingma", "qoder_cn_cli",
                  "kiro", "antigravity", "cline")
 
 # 设置文件的默认值（docs/architecture.md §7）。
@@ -418,6 +418,21 @@ def _valid_base_url(url) -> bool:
     return False
 
 
+def clean_skill_targets(value) -> list:
+    """把设置文件里读到的 skill_targets 整理成合法的样子（读取时用）。
+
+    不是列表就当成默认值（只装 Claude Code）；列表里不认识的名字和重复项
+    去掉，其余保持原来的顺序。
+    """
+    if not isinstance(value, list):
+        return list(DEFAULT_SETTINGS["skill_targets"])
+    cleaned = []
+    for item in value:
+        if isinstance(item, str) and item in SKILL_TARGETS and item not in cleaned:
+            cleaned.append(item)
+    return cleaned
+
+
 def validate_settings(value: dict) -> dict:
     """校验一份设置是否合法。
 
@@ -709,6 +724,13 @@ class ServiceStore:
         if isinstance(settings.get("llm"), dict):
             settings["llm"] = {k: v for k, v in settings["llm"].items()
                                if k in ("provider", "model", "base_url")}
+        # skill_targets 同样在读取时清洗：不是列表就用默认值，去掉不认识的
+        # 名字和重复项。手工改过文件、或者从新版本降级回来时，里面可能有
+        # 这个版本不认识的位置名；不清洗的话 validate_settings 会让改定时、
+        # 写主页地址这些**无关**的设置统统写不进去。控制台改勾选的接口
+        # 仍按原规则严格校验请求体。
+        if "skill_targets" in settings:
+            settings["skill_targets"] = clean_skill_targets(settings["skill_targets"])
         # 补齐用的默认值同样先深拷贝：skill_targets 是列表，旧设置文件
         # 没有这个键时，直接用模块级的默认列表，调用方一改就把默认值改坏了。
         return {**json.loads(json.dumps(DEFAULT_SETTINGS)), **settings}

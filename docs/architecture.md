@@ -5,7 +5,7 @@
 ## 0. 总览
 
 ```
-install.sh ── 检查环境 → 装好本体 → 启动服务（LaunchAgent 或临时服务）并打开控制台 → 安装 Claude Skill
+install.sh ── 检查环境 → 装好本体 → 启动服务（LaunchAgent 或临时服务）并打开控制台 → 写入查询 Skill（勾选的 AI 工具）
                 （XHS-Downloader 和语音模型由服务在后台下载，进度显示在控制台顶部）
                                                   │
 LaunchAgent ── xhs-wiki serve（守护进程：控制台 HTTP + 定时器 + 子进程管理）
@@ -192,7 +192,7 @@ KB_ROOT/
  "skill_targets": ["claude_code"]}
 ```
 
-- `skill_targets`：查询 Skill 装进哪些 AI 工具（§12 的三个安装位置 `claude_code`、`workbuddy`、`agents`），默认只有 Claude Code。只接受这三个固定名字、不能重复，可以为空列表；旧设置文件没有这个键时读出默认值。只能经 `/api/skill-targets`（向导第 6 步和日常页）修改。
+- `skill_targets`：查询 Skill 装进哪些 AI 工具（§12 表里的位置名，即 `store.SKILL_TARGETS`），默认只有 Claude Code。接口只接受这些固定名字、不能重复，可以为空列表；只能经 `/api/skill-targets`（向导第 6 步和日常页）修改。读设置文件时会清理：旧设置文件没有这个键、或者值不是列表，读出默认值；不认识的名字（手工改过、从新版本降级回来）和重复项直接去掉——不然整份设置都过不了校验，别的设置也存不进去。
 
 - `first_import_limit`：首次导入范围。整数 N 只在**第一次成功扫描**时生效：当时排在第 N 位以后的旧收藏标记为 `skipped`，之后新收藏的笔记不受限制；`null` 表示全部收藏。改成 `null` 后，之前跳过的旧收藏会在下次运行时重新排队。
 - `llmwiki_binary`：LLM Wiki 后台程序的绝对路径（§6.2），下载并校验完成后由守护进程或 `assets install-llmwiki` 命令自动写入；控制台接口仍不接受这个字段。
@@ -271,23 +271,28 @@ for stage in [download, parse, ingest, distill]:
 
 | 位置 | 目录 | 哪些工具读（2026-11-03 按官方文档核实） |
 |---|---|---|
-| `claude_code`（默认） | `~/.claude/skills/xhs-wiki/` | Claude Code；Cursor、OpenCode、Goose、Amp 为了兼容也读 |
+| `claude_code`（默认） | `~/.claude/skills/xhs-wiki/` | Claude Code；Cursor、OpenCode、Goose、Amp、VS Code 里的 GitHub Copilot 为了兼容也读 |
 | `workbuddy` | `~/.workbuddy/skills/xhs-wiki/` | 腾讯 WorkBuddy（产品文档只写"用户配置目录"，具体路径来自腾讯 SkillHub 安装说明和腾讯官方 GitHub 仓库） |
 | `agents` | `~/.agents/skills/xhs-wiki/` | OpenAI Codex（命令行、IDE 插件、ChatGPT 桌面版）、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi Code、Qwen Code、新版 Qoder、Zed、Devin Desktop（原 Windsurf）、OpenCode、Goose、Amp、Factory Droid |
 | `codebuddy` | `~/.codebuddy/skills/xhs-wiki/` | 腾讯 CodeBuddy（命令行版官方写明，IDE 版按同一套文档推断） |
 | `trae` / `trae_cn` | `~/.trae/skills/xhs-wiki/` / `~/.trae-cn/skills/xhs-wiki/` | 字节 Trae 国际版 / 国内版 |
 | `qoder` | `~/.qoder/skills/xhs-wiki/` | 阿里 Qoder |
-| `lingma` | `~/.lingma/skills/xhs-wiki/` | Qoder CN（原通义灵码） |
+| `lingma` | `~/.lingma/skills/xhs-wiki/` | Qoder CN（原通义灵码）的 IDE 和编辑器插件 |
+| `qoder_cn_cli` | `~/.qoder-cn/skills/xhs-wiki/` | Qoder CN 命令行版 |
 | `kiro` | `~/.kiro/skills/xhs-wiki/` | AWS Kiro |
-| `antigravity` | `~/.gemini/config/skills/xhs-wiki/` | Google Antigravity（App、IDE、命令行） |
+| `antigravity` | `~/.gemini/config/skills/xhs-wiki/` | Google Antigravity（App、IDE、Antigravity CLI）；免费和 Google One 用户的 Gemini CLI 已在 2026-06-18 换成 Antigravity CLI，它不读 `~/.agents/skills` |
 | `cline` | `~/.cline/skills/xhs-wiki/` | Cline |
 
-实测过的只有 Claude Code 和 Codex 命令行，其余按官方文档支持。控制台把前三个位置直接列出，其余收在"更多 AI 工具"里。
+实测过的只有 Claude Code 和 Codex 命令行（Codex 实测时 Skill 放在测试项目的 `.agents/skills`，和 `~/.agents/skills` 是同一套机制），其余按官方文档支持，控制台和 README 都写明"还没实测"。控制台把前三个位置直接列出，其余收在"更多 AI 工具"里。
 
-- 目录以相对主目录的写法登记在 `skill.TARGET_DIRS`（`uninstall.sh` 的 `EXTRA_SKILL_DIRS` 是同一份清单，测试核对两边一致）。隔离测试时用 `XHS_WIKI_TOOLS_HOME` 把 Claude Code 以外各工具的主目录（技能目录和检测线索都在它下面）指到测试目录，`XHS_WIKI_SKILLS_ROOT` 单独改写 Claude Code 的目录；安装脚本把两者写进后台服务的环境。
-- **写入**：首次设置完成、改知识库位置、换引擎、升级（安装脚本第 7 步）时，只重写勾选的位置，没勾选的位置一概不碰。
-- **撤掉**：只有用户在控制台取消勾选时，才撤那个位置里本工具写的 `SKILL.md` 和 `.skill-*` 临时文件；目录清空了才删目录，用户自己的文件保留；`xhs-wiki` 文件夹本身是符号链接时不删。几个位置其实是同一个目录（比如用户把 `~/.agents/skills` 链接到了 `~/.claude/skills`）时按真实目录合并处理，不会装了又删。
-- **检测**：向导和日常页显示"本机有 xx"，只看工具自己建的文件或 App 在不在（`~/.claude.json`、`Claude.app`、`WorkBuddy.app`、`~/WorkBuddy`、`~/.codex`、`~/.cursor`、`~/.gemini/settings.json`、`~/.copilot`、`Trae.app` 等，见 `skill._TOOL_MARKERS`），不读内容，也不拿本工具自己会建的技能目录（`~/.claude`、`~/.trae`、`~/.gemini/config` 这些）当线索。没有可靠线索的工具不显示。检测结果只是提示，装不装由用户勾选。
+- 目录以相对主目录的写法登记在 `skill.TARGET_DIRS`（`uninstall.sh` 的 `EXTRA_SKILL_DIRS` 是同一份清单，测试核对两边一致）。
+- **隔离用的环境变量**：`XHS_WIKI_TOOLS_HOME` 只给测试和隔离安装用，正式安装不设。设了它，所有位置的技能目录（包括 Claude Code）和检测线索都换到它下面，检测也只看它下面的 `Applications`；`XHS_WIKI_SKILLS_ROOT` 再单独改写 Claude Code 的目录。`skill.py`、`install.sh`、`uninstall.sh` 三处默认值一致。安装脚本只在用户自己设了 `XHS_WIKI_TOOLS_HOME` 时才导出、才写进后台服务的环境——正式安装要是也写进去，服务就按隔离模式检测，系统"应用程序"文件夹里的 App 都认不出来；它的值正好就是主目录时也按没设处理。
+- **只碰本工具的文件**：模板在 frontmatter 后面带一行归属标记 `<!-- managed-by: xhs-wiki -->`（文件仍以 `---` 开头，各工具照常加载）。v0.1~v0.2 写的旧文件没有标记，按模板一直没变的几行认领（第 1、2 行是 `---`、`name: xhs-wiki`，正文有"# 小红书收藏知识库""## 内容安全（先读这一段）"两个标题）。写入、撤掉、卸载都先核对：同名但不是本工具写的 `xhs-wiki/SKILL.md`（用户自己写的、别的项目恰好同名的、本身是符号链接的）一律不覆盖、不删除、不改文件夹权限，结果代码 `kept_foreign`，页面显示"已有别人写的同名技能"，不显示"已装好"。
+- **符号链接**：`xhs-wiki` 文件夹本身是链接时，只有它正好指向另一个勾选了、本身不是链接的位置才算装上（经那个位置写一次）；其他情况不顺着链接写、也不顺着删，结果代码 `kept_symlink`，页面如实提示。整个技能目录被链接（比如 `~/.agents/skills` → `~/.claude/skills`）不算这种情况，按真实目录合并处理。
+- **写入**：首次设置完成、改知识库位置、换引擎、升级（安装脚本第 7 步）时，只重写勾选的位置，没勾选的位置一概不碰。服务端在锁里重新读设置再写（避免和"改勾选"同时发生时把刚撤掉的位置写回去），并记下每个位置最近一次的结果；改知识库位置、换引擎、完成设置三个接口把结果（`skill_results`）带回页面，某个工具没写成功时页面说清是哪一个。安装脚本第 7 步只有 Claude Code 写不进去才让安装停下（和以前一样），其他工具写不进去只打印位置名和目录，安装照常完成。
+- **撤掉**：只有用户在控制台取消勾选时，才撤那个位置里本工具写的 `SKILL.md` 和 `.skill-*` 临时文件；目录清空了才删目录，用户自己的文件保留；`xhs-wiki` 文件夹本身是符号链接时不删。上次取消时没删成（比如目录暂时不可写）的，之后每次保存勾选都会重试：没勾选、但还留着带归属标记文件的位置一并撤掉。几个位置其实是同一个目录（比如用户把 `~/.agents/skills` 链接到了 `~/.claude/skills`）时按真实目录合并处理，不会装了又删；撤的时候每个位置各用自己的目录，不借用组里别的位置去删。
+- **卸载**：`uninstall.sh` 查遍所有位置，只删认得出是本工具写的 `SKILL.md`（同样核对标记和旧版签名，用系统自带的 grep、sed）；别人的同名技能列进"不会删除"并保留。Claude Code 的目录照旧严格：是符号链接或路径解析不了就整个停下，报错带路径和处理办法；其他工具的目录是符号链接、或上级目录进不去的，跳过并说明是哪个目录，其余照常卸载。知识库放在任何一个技能目录里面时拒绝卸载。
+- **检测**：向导和日常页显示"本机有 xx"，只看工具自己建的文件或 App（系统和用户的"应用程序"文件夹）在不在（`~/.claude.json`、`Claude.app`、`WorkBuddy.app`、`~/WorkBuddy`、`~/.codex`、`~/.cursor`、`~/.gemini/settings.json`、`~/.copilot`、`Trae.app` 等，见 `skill._TOOL_MARKERS`），不读内容，也不拿本工具自己会建的技能目录（`~/.claude`、`~/.trae`、`~/.gemini/config` 这些）当线索。没有可靠线索的工具不显示。检测结果只是提示，装不装由用户勾选。判断一律用 `os.path` 系列（遇到没有进入权限的目录返回"不在"，不抛异常）；状态接口再兜一层底，某个目录出问题时退回最简状态，控制台不会一直显示"暂时无法读取"。
 - **访问授权**：WorkBuddy 只读用户授权过的工作空间，Gemini CLI、Copilot、Devin Desktop、Antigravity 默认限于当前工作区，CodeBuddy、Kiro、Cline 读工作区外的文件会先问用户，所以页面按工具给出提示（把知识库文件夹选为工作空间、加进工作区或允许访问）；Skill 第 7 步要求读不到时如实说"读不到知识库"，不说成没收藏过。
 
 **描述写法**：说明这是"用户自己的小红书收藏知识库"，触发条件是用户提到"我收藏的 / 我之前存过 / 查一下我的收藏"，或者问题需要结合他收藏过的内容来回答。描述保持通用，不列具体领域。

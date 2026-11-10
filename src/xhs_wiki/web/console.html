@@ -233,7 +233,7 @@ footer{margin-top:22px;color:var(--muted);font-size:12px;display:flex;justify-co
 <section class="paper" aria-label="提问用的 AI 工具">
   <div class="body">
     <h2>在哪些 AI 工具里提问</h2>
-    <p class="subtle">勾上的工具会装好查询技能（问一句先翻收藏、附出处、查不到直说）；取消勾选会撤掉本工具写进去的技能文件，你自己放的文件不动。</p>
+    <p class="subtle">勾上的工具会装好查询技能（问一句先翻收藏、附出处、查不到直说）。Claude Code 和 Codex 命令行实测过；其他工具按各家官方文档的技能目录安装，还没实测。取消勾选只撤掉本工具写进去的技能文件；你自己放的文件、别人写的同名技能都不会覆盖或删除。</p>
     <div id="d-skill-targets"></div>
     <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
       <button class="primary" id="d-skill-save">保存</button>
@@ -375,11 +375,12 @@ footer{margin-top:22px;color:var(--muted);font-size:12px;display:flex;justify-co
     <p class="hint" id="w5-hint"></p>
   </div>
 
-  <!-- 第 6 步：提问用的 AI 工具。三行勾选框由脚本按 /api/status 的
-       skill_targets 生成（见 buildSkillTargetRows），默认只勾 Claude Code -->
+  <!-- 第 6 步：提问用的 AI 工具。勾选框由脚本按 /api/status 的
+       skill_targets 生成（见 buildSkillTargetRows）：前三个直接列出，其余
+       收在"更多 AI 工具"里；默认只勾 Claude Code -->
   <div id="w6" class="hidden">
     <h2>第 6 步 · 在哪些 AI 工具里提问</h2>
-    <p class="subtle">知识库是普通的 Markdown 文件，能读本机文件的 AI 工具都能查。勾上的工具会装好查询技能：你问一句，它先翻你的收藏，回答附上出处，查不到会直说。之后也能在控制台里改。</p>
+    <p class="subtle">知识库是普通的 Markdown 文件，能读本机文件的 AI 工具都能查。勾上的工具会装好查询技能：你问一句，它先翻你的收藏，回答附上出处，查不到会直说。Claude Code 和 Codex 命令行实测过；其他工具按各家官方文档的技能目录安装，还没实测。之后也能在控制台里改。</p>
     <div id="w-skill-targets"></div>
     <p class="hint" id="w6-hint"></p>
   </div>
@@ -848,19 +849,23 @@ function render(data){
    - workbuddy：WorkBuddy 官方文档说它只读用户授权过的工作空间；
    - agents：好几个工具共用的目录，其中 Gemini CLI、Copilot、Devin Desktop
      的文件工具默认只能访问当前工作区；
-   - 前三个以外的位置收在"更多 AI 工具"里（MAIN_SKILL_TARGETS）。 */
+   - 前三个以外的位置收在"更多 AI 工具"里（MAIN_SKILL_TARGETS）；
+   - check：验证情况。只有 Claude Code 和 Codex 命令行实测过，其余按各家
+     官方文档的目录安装，页面上如实写"还没实测"。
+   键必须和 store.SKILL_TARGETS 一一对应（测试会核对）。 */
 const SKILL_TARGET_TEXT={
-  claude_code:{title:'Claude Code',tip:'Cursor、OpenCode、Goose、Amp 也会读这个目录。'},
-  workbuddy:{title:'WorkBuddy（腾讯）',tip:'WorkBuddy 只读你授权过的文件夹：提问前在输入框下方点「选择工作空间」→「打开本地文件夹」，选知识库文件夹。已经开着的 WorkBuddy 要重开一次才看得到新技能。'},
-  agents:{title:'Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、Qwen Code 等',tip:'这些工具共用同一个技能目录，装一份都能用；新版 Qoder、Zed、Devin Desktop（原 Windsurf）、OpenCode、Goose、Amp、Factory 也读这里。Gemini CLI、Copilot、Devin Desktop 默认只读工作区里的文件：在知识库文件夹里打开它们，或者把知识库加进工作区。'},
-  codebuddy:{title:'CodeBuddy（腾讯）',tip:'读工作目录以外的文件时会先问你，允许就行。'},
-  trae:{title:'Trae（国际版）',tip:'国内版 Trae CN 选下一项。'},
-  trae_cn:{title:'Trae CN（国内版）',tip:'国际版 Trae 选上一项。'},
-  qoder:{title:'Qoder（阿里）',tip:'新版 Qoder 也读上面的共用目录，勾其中一项就够。'},
-  lingma:{title:'Qoder CN（原通义灵码）',tip:'装好后重启一次 IDE 才看得到新技能。'},
-  kiro:{title:'Kiro（AWS）',tip:'读工作区以外的文件时会弹窗请你批准。'},
-  antigravity:{title:'Antigravity（Google）',tip:'默认只能访问工作区：把知识库文件夹作为工作区打开，或在设置里打开 Agent Non-Workspace File Access。'},
-  cline:{title:'Cline',tip:'读工作区以外的文件时会先问你。'},
+  claude_code:{title:'Claude Code',check:'实测过',tip:'Cursor、OpenCode、Goose、Amp 和 VS Code 里的 GitHub Copilot 也会读这个目录；和下面的共用目录都勾上时，这些工具里会看到两份同样的技能。'},
+  workbuddy:{title:'WorkBuddy（腾讯）',check:'还没实测',tip:'WorkBuddy 只读你授权过的文件夹：提问前在输入框下方点「选择工作空间」→「打开本地文件夹」，选知识库文件夹。已经开着的 WorkBuddy 要重开一次才看得到新技能。'},
+  agents:{title:'Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、Qwen Code 等',check:'Codex 命令行实测过，其余还没实测',tip:'这些工具共用同一个技能目录，装一份都能用；新版 Qoder、Zed、Devin Desktop（原 Windsurf）、OpenCode、Goose、Amp、Factory 也读这里。Gemini CLI、Copilot、Devin Desktop 默认只读工作区里的文件：在知识库文件夹里打开它们，或者把知识库加进工作区。Gemini CLI 的免费和 Google One 用户从 2026-06-18 起换成了 Antigravity CLI，它不读这个目录，请勾「更多 AI 工具」里的 Antigravity。'},
+  codebuddy:{title:'CodeBuddy（腾讯）',check:'还没实测',tip:'读工作目录以外的文件时会先问你，允许就行。'},
+  trae:{title:'Trae（国际版）',check:'还没实测',tip:'国内版 Trae CN 选下一项。'},
+  trae_cn:{title:'Trae CN（国内版）',check:'还没实测',tip:'国际版 Trae 选上一项。'},
+  qoder:{title:'Qoder（阿里）',check:'还没实测',tip:'新版 Qoder 也读上面的共用目录，勾其中一项就够。'},
+  lingma:{title:'Qoder CN IDE（原通义灵码）',check:'还没实测',tip:'只管 IDE 和编辑器插件，命令行版选下一项。装好后重启一次 IDE 才看得到新技能。'},
+  qoder_cn_cli:{title:'Qoder CN 命令行版',check:'还没实测',tip:'IDE 和插件选上一项。'},
+  kiro:{title:'Kiro（AWS）',check:'还没实测',tip:'读工作区以外的文件时会弹窗请你批准。'},
+  antigravity:{title:'Antigravity（Google，桌面版和 Antigravity CLI）',check:'还没实测',tip:'原来用 Gemini CLI 的免费和 Google One 用户，2026-06-18 起换成了 Antigravity CLI，勾这一项。默认只能访问工作区：把知识库文件夹作为工作区打开，或在设置里打开 Agent Non-Workspace File Access。'},
+  cline:{title:'Cline',check:'还没实测',tip:'读工作区以外的文件时会先问你。'},
 };
 /* 一直显示的前三个位置；其余的收进可以展开的"更多 AI 工具"。 */
 const MAIN_SKILL_TARGETS=['claude_code','workbuddy','agents'];
@@ -889,10 +894,14 @@ function buildSkillTargetRows(scope,targets){
     const row=el('label',undefined,'choice');
     const input=el('input');input.type='checkbox';input.dataset.target=t.id;
     input.style.width='auto';input.style.marginTop='3px';
-    input.addEventListener('change',()=>{skillDraft[scope]=checkedSkillTargets(scope)});
+    input.addEventListener('change',()=>{
+      skillDraft[scope]=checkedSkillTargets(scope);
+      row.classList.toggle('on',input.checked);
+    });
     const body=el('div');
     const head=el('div');
     head.append(el('span',text.title));
+    if(text.check){head.append(el('span','（'+text.check+'）','subtle'))}
     const tags=el('span');tags.dataset.role='tags';
     head.append(tags);
     body.append(head);
@@ -909,7 +918,8 @@ function checkedSkillTargets(scope){
   return Array.from($(SKILL_BOXES[scope]).querySelectorAll('input[type=checkbox]'))
     .filter(input=>input.checked).map(input=>input.dataset.target);
 }
-/* 每次轮询：回填勾选（没改过时）、"本机有 xx / 已装好"标签和技能目录。 */
+/* 每次轮询：回填勾选（没改过时）、状态标签和技能目录。标签只挑最要紧的
+   一个说：上次同步失败 > 是符号链接 > 有别人的同名技能 > 已装好 / 还没装上。 */
 function updateSkillTargetRows(scope,targets){
   if(!Array.isArray(targets)||!targets.length)return;
   buildSkillTargetRows(scope,targets);
@@ -925,24 +935,45 @@ function updateSkillTargetRows(scope,targets){
     /* 只在检测到时显示"本机有 xx"。没检测到不写"没有"：好几个工具没有
        可靠的线索（比如编辑器插件），写"没检测到"反而误导。 */
     const found=t.detected_tools||[];
-    if(found.length){tags.append(document.createTextNode(' '));tags.append(el('span','本机有 '+found.join('、'),'tag done'))}
-    if(t.installed){tags.append(document.createTextNode(' '));tags.append(el('span','已装好','tag done'))}
-    else if(t.selected){tags.append(document.createTextNode(' '));tags.append(el('span','还没装上','tag warn'))}
+    const tag=(label,kind)=>{tags.append(document.createTextNode(' '));tags.append(el('span',label,'tag '+kind))};
+    if(found.length){tag('本机有 '+found.join('、'),'done')}
+    if(t.last_result==='failed'){tag(t.selected?'上次没写成功':'上次没撤掉','warn')}
+    else if(t.symlink){tag('是符号链接，没有动它','warn')}
+    else if(t.state==='foreign'){tag('已有别人写的同名技能，没有动它','warn')}
+    else if(t.installed){tag('已装好','done')}
+    else if(t.selected){tag('还没装上','warn')}
     row.querySelector('[data-role=path]').textContent='技能装在 '+t.path;
   }
 }
-/* 保存勾选：成功后丢掉草稿，回到"跟着服务端走"。返回给用户看的结果文字，
-   失败时返回 null（文字已写进 hint）。 */
+/* 把服务端同步技能的结果（{位置名: 结果代码}）变成给人看的一句话；
+   一切正常时返回空字符串。chosen 是这次勾选的位置：失败的位置在里面
+   就是没写成功，不在就是没撤掉；不传（改知识库位置、换引擎、完成设置
+   这些只写不撤的接口）时失败都算没写成功。 */
+function skillResultNote(results,chosen){
+  const names=code=>Object.entries(results||{}).filter(([,value])=>value===code).map(([id])=>id);
+  const title=id=>(SKILL_TARGET_TEXT[id]||{title:id}).title;
+  const failed=names('failed');
+  const unwritten=failed.filter(id=>!chosen||chosen.includes(id));
+  const unremoved=failed.filter(id=>chosen&&!chosen.includes(id));
+  const notes=[];
+  if(unwritten.length){notes.push('这些工具的技能没写成功：'+unwritten.map(title).join('、')+'（检查目录权限后再保存一次）')}
+  if(unremoved.length){notes.push('这些工具的技能没撤掉：'+unremoved.map(title).join('、')+'（检查目录权限后再保存一次）')}
+  const foreign=names('kept_foreign');
+  if(foreign.length){notes.push('这些位置已有别人写的同名技能，没有覆盖也没有删：'+foreign.map(title).join('、')+'（需要的话请自己处理）')}
+  const links=names('kept_symlink');
+  if(links.length){notes.push('这些位置的技能文件夹是符号链接，没有动它：'+links.map(title).join('、')+'（需要的话请自己处理）')}
+  return notes.join('；');
+}
+/* 保存勾选：成功后丢掉草稿，回到"跟着服务端走"。返回给用户看的结果文字
+   （一切正常是空字符串），失败时返回 null（文字已写进 hint）。 */
 async function saveSkillTargets(scope,hint){
-  const r=await post('/api/skill-targets',{targets:checkedSkillTargets(scope)});
+  const chosen=checkedSkillTargets(scope);
+  const r=await post('/api/skill-targets',{targets:chosen});
   if(r.status!==200){
     hint.className='hint err';hint.textContent='保存失败：'+plainCode(r.data.error||r.status);return null}
   skillDraft[scope]=null;
   updateSkillTargetRows(scope,r.data.skill_targets);
-  /* 某个位置写入或删除失败（比如目录不可写）：说清是哪个工具。 */
-  const failed=Object.entries(r.data.results||{}).filter(([,code])=>code==='failed')
-    .map(([id])=>(SKILL_TARGET_TEXT[id]||{title:id}).title);
-  return failed.length?('这些工具的技能没写成功：'+failed.join('、')+'（检查目录权限后再保存一次）'):'';
+  return skillResultNote(r.data.results,chosen);
 }
 /* 日常页提供方是 API 类（没有密钥输入框）时显示"请点重新设置"提示。 */
 function updateEngineKeyTip(){
@@ -1160,8 +1191,12 @@ async function wizNext(){
     if(r.status!==200){wizHint('知识库位置保存失败：'+plainCode(r.data.error||r.status),true);return}
     /* moved 为 generated 时只搬了本工具生成的内容，原文件夹
        里用户自己的文件没动，提示里说清楚，免得用户以为东西丢了。 */
-    if(r.data.migrated&&r.data.moved==='generated'){wizHint('已把本工具生成的内容搬到新位置 ✓（原文件夹里你自己的文件没有动）')}
-    else if(r.data.migrated){wizHint('已把原来的知识库整体搬到新位置 ✓')}else{wizHint('')}
+    let moved='';
+    if(r.data.migrated&&r.data.moved==='generated'){moved='已把本工具生成的内容搬到新位置 ✓（原文件夹里你自己的文件没有动）'}
+    else if(r.data.migrated){moved='已把原来的知识库整体搬到新位置 ✓'}
+    /* 知识库位置写在技能里：某个工具的技能没跟着更新，接在后面说清楚。 */
+    const skillNote=skillResultNote(r.data.skill_results);
+    wizHint([moved,skillNote].filter(Boolean).join('。'),Boolean(skillNote));
     wizStep=2;
   }else if(wizStep===2){
     if(engineChoice==='llmwiki'&&llmwikiSupported===false){wizHint(plainCode('llmwiki_unsupported_platform'),true);return}
@@ -1177,6 +1212,8 @@ async function wizNext(){
       wizStep=3;wizHint('请先选择本机已安装的 Claude Code 或 Codex，再保存并检查');showWizStep();return
     }
     if(r.status!==200){wizHint('引擎保存失败：'+plainCode(r.data.reason||r.data.error||r.status),true);return}
+    const engineSkillNote=skillResultNote(r.data.skill_results);
+    if(engineSkillNote){wizHint(engineSkillNote,true)}
     wizStep=3;
   }else if(wizStep===3){
     const saved=await saveLlm();
@@ -1203,7 +1240,8 @@ async function wizNext(){
        组件下载完成后自动开始，页面上如实提示而不是"已开始"。
        某个工具的技能没写成功时把原因接在后面，不挡住完成设置。 */
     const done=f.data.assets_ready===false?'设置完成。组件下载完成后会自动开始导入 ✓':'设置完成，已开始第一次整理 ✓';
-    wizHint(skillNote?done+'。'+skillNote:done,Boolean(skillNote));
+    const notes=[...new Set([skillNote,skillResultNote(f.data.skill_results)].filter(Boolean))];
+    wizHint([done,...notes].join('。'),notes.length>0);
     refresh();
   }
   showWizStep();
@@ -1300,7 +1338,11 @@ $('engine-form').addEventListener('submit',async event=>{
       hint.className='hint';hint.textContent='后台程序还在下载，请点「重新设置」查看进度并继续选择 LLM Wiki。';
     }else if(er.status!==200){
       hint.className='hint err';hint.textContent='引擎保存失败：'+plainCode(er.data.reason||er.data.error||er.status);
-    }else{hint.className='hint ok';hint.textContent='已保存。新设置只影响之后整理的内容'}
+    }else{
+      const note=skillResultNote(er.data.skill_results);
+      hint.className=note?'hint err':'hint ok';
+      hint.textContent='已保存。新设置只影响之后整理的内容'+(note?'。'+note:'');
+    }
     refresh();
   }else{hint.className='hint err';hint.textContent='保存失败：'+plainCode(r.data.error||r.status)}
 });

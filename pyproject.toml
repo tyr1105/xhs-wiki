@@ -55,3 +55,6 @@ packages = ["src/xhs_wiki"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# 先从本仓库的 src 导入：在 git worktree 里共用别处的 .venv 时，不写这行
+# 导入的会是 .venv 里以可编辑方式装的另一份代码，测的就不是本分支了。
+pythonpath = ["src"]

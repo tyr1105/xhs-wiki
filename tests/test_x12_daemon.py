@@ -15,7 +15,7 @@ import pytest
 from xhs_wiki import assets, daemon, engines, runner
 from xhs_wiki.engines.llmwiki.backend import EngineUnavailable
 from xhs_wiki.ledger import Ledger
-from xhs_wiki.store import ServiceStore
+from xhs_wiki.store import SKILL_TARGETS, ServiceStore
 
 
 @pytest.fixture
@@ -48,12 +48,13 @@ def setup(tmp_path, monkeypatch):
                              _engine_selection_lock=threading.Lock(),
                              _engine_selection_serial=0,
                              # /api/status 也报告查询 Skill 装进了哪些 AI 工具：
-                             # 三个技能目录和检测工具用的主目录都指到临时目录。
+                             # 每个安装位置的技能目录和检测工具用的主目录都
+                             # 指到临时目录（不靠 conftest 的环境变量兜底）。
                              skill_target_roots=lambda: {
-                                 "claude_code": tmp_path / "skills",
-                                 "workbuddy": tmp_path / "workbuddy-skills",
-                                 "agents": tmp_path / "agents-skills"},
-                             tool_home=tmp_path / "tool-home")
+                                 target: tmp_path / "tool-skills" / target
+                                 for target in SKILL_TARGETS},
+                             tool_home=tmp_path / "tool-home",
+                             _skill_last_results={})
     handler = object.__new__(daemon.ServiceHandler)
     handler.server = server
     handler._send_json = Mock()

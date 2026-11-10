@@ -39,7 +39,7 @@ from xhs_wiki import cli, config, console_auth, daemon
 from xhs_wiki.daemon import ServiceServer, Supervisor
 from xhs_wiki.ledger import Ledger
 from xhs_wiki.llm.base import LLMError
-from xhs_wiki.store import ServiceStore, now_beijing
+from xhs_wiki.store import SKILL_TARGETS, ServiceStore, now_beijing
 
 # 北京时间（所有测试时间基于同一个"今天"，避免跨天边界抖动）。
 TODAY = now_beijing()
@@ -180,8 +180,14 @@ class DaemonTestBase(unittest.TestCase):
             make_engine=lambda settings: FakeEngine(),
             opener=lambda args: self.opener_calls.append(list(args)),
             disk_usage=lambda path: shutil.disk_usage(self.tmp.name),
-            # Skill 安装位置指到临时目录（sync_skill 会真的写文件）。
-            skills_root=Path(self.tmp.name) / "skills")
+            # Skill 安装位置指到临时目录（sync_skill 会真的写文件）：Claude Code
+            # 的目录、其他每个 AI 工具的目录、检测"本机装了哪些工具"用的主目录
+            # 都显式注入，不靠 conftest 的环境变量兜底——直接运行本文件
+            # （不经 pytest）时也绝不会去看或写真实的 ~/.agents 等目录。
+            skills_root=Path(self.tmp.name) / "skills",
+            skill_roots={target: Path(self.tmp.name) / "tool-skills" / target
+                         for target in SKILL_TARGETS if target != "claude_code"},
+            tool_home=Path(self.tmp.name) / "tool-home")
         # 默认把"今天已经定时跑过"写上：只测各自关注的逻辑。
         self.store.write_scheduler(
             last_scheduled_date=AFTERNOON.date().isoformat())

@@ -1395,6 +1395,10 @@ class ServiceServer(ThreadingHTTPServer):
         # 两次快速保存交错时，后写的必须是最新的设置。可重入：接口拿着锁
         # 再调 sync_skill 不会把自己卡住。
         self._skill_lock = threading.RLock()
+        # 各位置最近一次同步的结果代码（服务这次启动以来）。改知识库位置、
+        # 换引擎时某个位置写失败，旧的 SKILL.md 还留着，页面要能提示
+        # "上次没写成功"，不能还显示"已装好"。
+        self._skill_last_results = {}
         super().__init__(address, ServiceHandler)
 
     def skill_target_roots(self) -> dict:
@@ -1442,24 +1446,34 @@ class ServiceServer(ThreadingHTTPServer):
 
     # ---------------- Skill 同步 ----------------
 
-    def sync_skill(self, settings: dict, withdraw=()) -> dict:
+    def sync_skill(self, settings: dict = None, withdraw=()) -> dict:
         """按当前设置更新查询 Skill（skill.sync），返回各位置的结果代码。
 
         什么时机调用：首次设置完成、修改 kb_root、engine 或要装进的
         AI 工具之后——Skill 正文里写死了知识库路径和引擎，改了设置不更新，
-        AI 就会去旧路径找知识库。勾选的位置写入；``withdraw`` 是用户刚取消
-        勾选的位置，撤掉本工具写过的文件（只有改勾选的接口会传）。失败只
-        体现在返回的结果代码里（磁盘满/权限）：Skill 旧一点不影响流水线，
-        不该让设置接口整体失败。
+        AI 就会去旧路径找知识库。勾选的位置写入；``withdraw`` 是要撤的位置
+        （只有改勾选的接口会传），撤掉本工具写过的文件。
+
+        ``settings`` 不传时在锁里自己读最新设置——改知识库位置、换引擎、
+        完成设置都这样调用：如果在拿锁之前就读好设置，它和"改勾选"同时
+        发生时会拿着旧的勾选，把刚撤掉的位置又写回去。
+
+        失败只体现在返回的结果代码里（磁盘满/权限），同时记进
+        _skill_last_results 给页面看：Skill 旧一点不影响流水线，不该让
+        设置接口整体失败。
         """
         from . import skill
         with self._skill_lock:
             try:
-                return skill.sync(settings, roots=self.skill_target_roots(),
-                                  withdraw=withdraw)
+                if settings is None:
+                    settings = self.supervisor.store.load_settings()
+                results = skill.sync(settings, roots=self.skill_target_roots(),
+                                     withdraw=withdraw)
             except (OSError, ValueError, KeyError):
                 # 只带稳定错误意图，不把异常信息（可能含路径）写进任何地方。
                 return {}
+            self._skill_last_results.update(results)
+            return results
 
     # ---------------- 可注入依赖的默认实现 ----------------
 
@@ -1929,10 +1943,12 @@ class ServiceHandler(BaseHTTPRequestHandler):
         """选择把查询 Skill 装进哪些 AI 工具（向导第 6 步和日常页共用）。
 
         请求体：{"targets": [位置名, ...]}，位置名只能是
-        store.SKILL_TARGETS 里的固定名字（claude_code / workbuddy /
-        agents），不能带路径之类的自由文本。保存设置后立即按新设置同步：
-        勾选的位置写入 Skill；原来勾着、这次取消的位置撤掉本工具写过的
-        文件（原来就没勾的位置不碰，那里用户自己放的东西保持原样）。
+        store.SKILL_TARGETS 里的固定名字（各位置和目录见 skill.TARGET_DIRS），
+        不能带路径之类的自由文本。保存设置后立即按新设置同步：勾选的位置
+        写入 Skill；要撤的位置撤掉本工具写过的文件。要撤的是：原来勾着、
+        这次取消的；以及没勾选、但还留着一份带归属标记的 SKILL.md 的（比如
+        上次取消时没删成，用户修好权限后再保存一次，这次就能撤掉）。别人
+        放的同名技能、符号链接一概不动。
 
         返回 {"ok": true, "skill_targets": 各位置状态, "results": {位置:
         结果代码}}。某个位置写入失败（比如目录不可写）不算整个请求失败，
@@ -1950,13 +1966,15 @@ class ServiceHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": str(error)})
                 return
             settings = store.load_settings()
+            after = set(settings["skill_targets"])
+            leftovers = skill.marked_targets(roots=self.server.skill_target_roots())
             results = self.server.sync_skill(
-                settings, withdraw=before - set(settings["skill_targets"]))
+                settings, withdraw=(before | leftovers) - after)
         self._send_json(200, {
             "ok": True,
-            "skill_targets": skill.targets_state(
-                settings, roots=self.server.skill_target_roots(),
-                home=self.server.tool_home),
+            # 和 /api/status 用同一个带兜底的读法：设置已经存好了，不能因为
+            # 某个目录读不了，让页面误报"保存失败"。
+            "skill_targets": _safe_skill_targets(self.server, settings),
             "results": results,
         })
 
@@ -2019,10 +2037,12 @@ class ServiceHandler(BaseHTTPRequestHandler):
             return
         # 知识库统计缓存里还是旧位置的数字，清掉让下一次 /api/status 重算。
         self.server._kb_cache = None
-        # 知识库位置变了，Skill 里写的路径也要跟着更新。
-        self.server.sync_skill(store.load_settings())
+        # 知识库位置变了，Skill 里写的路径也要跟着更新（设置在锁里读）。
+        # 结果带回页面：某个工具没写成功，页面要能提示。
+        skill_results = self.server.sync_skill()
         self._send_json(200, {"ok": True, "kb_root": str(path),
-                              "migrated": migrated, "moved": moved})
+                              "migrated": migrated, "moved": moved,
+                              "skill_results": skill_results})
 
     def _post_setup_engine(self, body: dict):
         """先准备后台，再做一次必定收尾的健康检查；通过后才保存候选设置。"""
@@ -2083,8 +2103,9 @@ class ServiceHandler(BaseHTTPRequestHandler):
             # 引擎换了，知识库统计的数法也跟着换；清掉缓存让下一次 /api/status 重算。
             self.server._kb_cache = None
             # Skill 与设置在同一代次中更新，不让慢请求覆盖新选择。
-            self.server.sync_skill(store.load_settings())
-        self._send_json(200, {"ok": True, "engine": engine})
+            skill_results = self.server.sync_skill()
+        self._send_json(200, {"ok": True, "engine": engine,
+                              "skill_results": skill_results})
 
     def _check_engine_and_close(self, settings: dict) -> tuple[bool, str]:
         """一次性健康检查，无论正常、不健康或抛错都释放本次引擎。
@@ -2254,7 +2275,7 @@ class ServiceHandler(BaseHTTPRequestHandler):
         # 页面上不该再显示"请先完成首次设置"（之前要等下一次运行收尾）。
         store.clear_needs_user("setup_incomplete")
         # 首次设置完成，安装正式版 Skill（之前是"尚未完成设置"版）。
-        self.server.sync_skill(store.load_settings())
+        skill_results = self.server.sync_skill()
         # 资源没就绪时 start_run 会把这次运行拦下（needs_user
         # assets_not_ready），资源就绪后自动开跑；把就绪状态告诉页面，
         # 页面据此提示"组件下载完成后会自动开始导入"。
@@ -2262,7 +2283,8 @@ class ServiceHandler(BaseHTTPRequestHandler):
                         or self.server.supervisor.assets.all_ready())
         self.server.supervisor.start_run("manual")
         self._send_json(200, {"ok": True, "setup_completed": True,
-                              "assets_ready": assets_ready})
+                              "assets_ready": assets_ready,
+                              "skill_results": skill_results})
 
     def _post_notes_retry(self, body: dict):
         """失败笔记单条重试：调 ledger.retry（退回失败前的阶段、次数清零）。"""
@@ -2336,6 +2358,22 @@ def _safe_disk_usage(disk_usage_fn, path):
 # /api/status 的组装
 # ---------------------------------------------------------------------------
 
+def _safe_skill_targets(server: ServiceServer, settings: dict) -> list:
+    """各安装位置的状态；读文件系统出任何错都退回最简状态，不让状态接口失败。
+
+    skill.targets_state 本身已经不会因为没权限抛异常；这里再兜一层底，和
+    磁盘查询的 _safe_disk_usage 一个思路：某个 AI 工具的目录出了问题，不能
+    让整个控制台一直显示"暂时无法读取"。
+    """
+    from . import skill as skill_module
+    try:
+        return skill_module.targets_state(
+            settings, roots=server.skill_target_roots(), home=server.tool_home,
+            last_results=server._skill_last_results)
+    except (OSError, ValueError):
+        return skill_module.fallback_state(settings)
+
+
 def build_status(server: ServiceServer) -> dict:
     """组装 /api/status 的 JSON。
 
@@ -2379,7 +2417,6 @@ def build_status(server: ServiceServer) -> dict:
     # 步骤代码 → 中文（runner 集中定义，控制台直接复用）。
     from .runner import STEP_LABELS
     from .assets import llmwiki_supported
-    from . import skill as skill_module
 
     return {
         "status": store.read_status(),
@@ -2397,8 +2434,7 @@ def build_status(server: ServiceServer) -> dict:
         "llmwiki_supported": llmwiki_supported(),
         # 查询 Skill 装进了哪些 AI 工具、本机检测到了哪些工具（向导第 6 步
         # 和日常页显示）。检测只看几个路径存不存在，每 5 秒轮询一次也不费事。
-        "skill_targets": skill_module.targets_state(
-            settings, roots=server.skill_target_roots(), home=server.tool_home),
+        "skill_targets": _safe_skill_targets(server, settings),
         "paused": store.pause_requested(),
         # ---------------- 台账、知识库、首次设置与模型 ----------------
         "counts": counts,
