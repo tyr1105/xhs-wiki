@@ -167,14 +167,16 @@ class TestRenderFollowsEngineLayout(unittest.TestCase):
         })
 
     def test_llmwiki_paths_exist_in_scaffold(self):
-        from xhs_wiki.engines.llmwiki.project import scaffold
-
-        # 向导第一次选 LLM Wiki 引擎时就是这样搭出知识库的（还没导入任何收藏）。
-        scaffold(self.kb)
+        # nashsu/llm_wiki 的项目布局：索引、来源页、主题页都在 wiki/ 下
+        #（知识库是用户在 LLM Wiki 里建的，这里只搭出同样的目录形状）。
+        for name in ("sources", "concepts", "entities"):
+            (self.kb / "wiki" / name).mkdir(parents=True, exist_ok=True)
+        (self.kb / "wiki" / "index.md").write_text("x", encoding="utf-8")
         text = skill.render(fake_settings(kb_root=str(self.kb), engine="llmwiki"))
+        # 主题页目录指向 nashsu 布局的 wiki/concepts（概念页最常被查询）。
         self.assert_paths_exist(text, {
             self.kb / "wiki" / "index.md",
-            self.kb / "wiki",
+            self.kb / "wiki" / "concepts",
             self.kb / "wiki" / "sources",
         })
         # 轻量引擎的目录名一个都不能出现在 LLM Wiki 用户的 Skill 里。

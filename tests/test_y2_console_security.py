@@ -460,7 +460,7 @@ class TestSettingsWhitelist(Y2HttpBase):
             {"llm": {"claude_path": fake_bin}},
             {"llm": {"codex_path": fake_bin}},
             {"llm": {"model": "m", "provider": "openai_compatible"}},
-            {"llmwiki_binary": fake_bin},
+            {"deprecated_binary_path": fake_bin},
             {"kb_root": str(Path(self.tmp.name) / "kb-elsewhere")},
             {"engine": "llmwiki"},
             {"setup_completed": True},
@@ -468,7 +468,7 @@ class TestSettingsWhitelist(Y2HttpBase):
             {"first_import_limit": 5},
             {"headless": False},
             # 合法字段夹带危险字段：整体拒绝，合法的那个也不生效。
-            {"daily_time": "05:00", "llmwiki_binary": fake_bin},
+            {"daily_time": "05:00", "deprecated_binary_path": fake_bin},
         ]
         before = self.settings_bytes()
         for body in bodies:

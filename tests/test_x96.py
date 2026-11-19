@@ -84,9 +84,8 @@ EXTRACT_SOURCES = {
     # 引擎：入库/整理阶段的失败代码（写进台账，显示在失败笔记列表）。
     "engines/markdown/engine.py": [r'^[A-Z_]+ = "([a-z_]+)"',
                                    r'"code": "([a-z_]+)"'],
-    "engines/llmwiki/engine.py": [r'raise \w+\("([a-z_]+)"\)',
-                                  r'"code": "([a-z_]+)"'],
-    "engines/llmwiki/compiler.py": [r'"code": "([a-z_]+)"'],
+    "engines/llmwiki_app/engine.py": [r'return "(llmwiki_[a-z_]+)"',
+                                      r'"code": "(llmwiki_[a-z_]+)"'],
 }
 
 # store 的校验代码有一部分是 f"{field}_invalid" 动态拼出来的，正则抽不

@@ -756,16 +756,14 @@ class TestSetupEngineAndLlm(DaemonTestBase):
         self.assertEqual(data.get("error"), "engine_invalid")
 
     def test_engine_llmwiki_unhealthy_preserves_reason(self):
-        # X12 已接入后台：用假的就绪资源和不健康引擎核对原因透传，
-        # 原先“失败时不保存”的约束保留，且不启动或探测真实后台。
+        # v0.4.0 的 LLM Wiki 引擎没有下载步骤，直接健康检查并透传原因；
+        # “失败时不保存”的约束保留，不启动应用、不调用模型。
         self.server.make_engine = lambda settings: FakeEngine(
-            ok=False, reason="llmwiki_desktop_running")
-        with patch("xhs_wiki.assets.llmwiki_supported", return_value=True), \
-                patch("xhs_wiki.assets.llmwiki_ready", return_value=True):
-            status, data = self.post("/api/setup/engine", body={"engine": "llmwiki"})
+            ok=False, reason="llmwiki_model_missing")
+        status, data = self.post("/api/setup/engine", body={"engine": "llmwiki"})
         self.assertEqual(status, 400)
         self.assertEqual(data.get("error"), "engine_unavailable")
-        self.assertEqual(data.get("reason"), "llmwiki_desktop_running")
+        self.assertEqual(data.get("reason"), "llmwiki_model_missing")
         self.assertEqual(self.store.load_settings()["engine"], "markdown")
 
     def test_engine_markdown_saved_when_healthy(self):
@@ -1062,13 +1060,11 @@ class TestKbStats(DaemonTestBase):
         self.assertEqual(kb_data["deferred"], 1)
 
     def test_kb_stats_llmwiki_layout_in_status(self):
-        """选 LLM Wiki 引擎时按 wiki/ 下的真实结构数（以前照轻量引擎的目录数，恒为 0）。"""
-        from xhs_wiki.engines.llmwiki.project import scaffold
+        """选 LLM Wiki 引擎时按 wiki/ 下的真实结构数（nashsu 布局）。"""
         kb = Path(self.tmp.name) / "wiki-kb"
-        scaffold(kb)  # 自带 index/log/overview 三个结构页，不算主题页
         for page in ("wiki/concepts/concept-a.md",
-                     "wiki/sources/local/source-1.md",
-                     "wiki/sources/local/source-2.md"):
+                     "wiki/sources/source-1.md",
+                     "wiki/sources/source-2.md"):
             (kb / page).parent.mkdir(parents=True, exist_ok=True)
             (kb / page).write_text("x", encoding="utf-8")
         self.store.update_settings({"kb_root": str(kb), "engine": "llmwiki"})

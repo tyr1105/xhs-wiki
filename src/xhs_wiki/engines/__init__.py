@@ -1,7 +1,8 @@
 """引擎公共工厂：守护进程和一次运行共用同一份引擎选择规则。
 
-这里只负责按设置构造实例，不启动后台、不检查模型、不读取密钥。
-提供方由上层注入，LLM Wiki 则自己通过包装脚本调用 CLI。
+这里只负责按设置构造实例，不启动应用、不检查模型、不读取密钥。
+提供方由上层注入；LLM Wiki 引擎对接 nashsu/llm_wiki 桌面应用，
+不需要 xhs-wiki 自己的模型提供方。
 """
 
 from pathlib import Path
@@ -12,9 +13,10 @@ def make_engine(settings, provider, app_home):
 
     name = settings.get("engine")
     if name == "llmwiki":
-        from .llmwiki.engine import LlmWikiEngine
+        from .llmwiki_app.engine import LlmWikiAppEngine
 
-        return LlmWikiEngine(Path(settings["kb_root"]).expanduser(), app_home, settings)
+        return LlmWikiAppEngine(Path(settings["kb_root"]).expanduser(),
+                                app_home, settings)
     if name == "markdown":
         from .markdown.engine import MarkdownEngine
 

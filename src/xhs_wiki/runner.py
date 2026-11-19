@@ -97,10 +97,16 @@ RESULT_MESSAGES = {
 # 所以 setup_incomplete 暂不发系统通知（用户打开控制台就能看到这个事项）。
 SETUP_INCOMPLETE_TITLE = "请先在控制台完成首次设置"
 
-# llmwiki_review_required 是 LLM Wiki 引擎用的"需要用户处理"代码（LLM Wiki 有
-# 一组整理改动需要用户在桌面版或控制台里确认）。沿用同样的做法，文案
-# 只合并进 store 的表，notify.TEMPLATES 的快照保持原样。
-LLMWIKI_REVIEW_REQUIRED_TITLE = "LLM Wiki 有一组整理改动需要你在桌面版或控制台里确认"
+# LLM Wiki 引擎（nashsu/llm_wiki）的"需要用户处理"代码与中文标题。
+# 这四个代码分别来自 health()（前三个）和 prepare()（wrong_project），
+# 走和 setup_incomplete 一样的合并做法：文案只进 store 的表，
+# notify.TEMPLATES 的快照保持原样（tests/test_notify.py 锁定代码集合）。
+LLMWIKI_NEEDS_USER_TITLES = {
+    "llmwiki_app_missing": "没有找到 LLM Wiki 应用，请先安装（0.6.13 或更高版本）",
+    "llmwiki_project_invalid": "知识库目录不是 LLM Wiki 项目，请在 LLM Wiki 里新建或打开项目",
+    "llmwiki_model_missing": "LLM Wiki 还没配置整理用的模型，请在它的设置里选择并填好密钥",
+    "llmwiki_wrong_project": "LLM Wiki 打开的不是你的知识库，请在 LLM Wiki 里打开它",
+}
 
 
 def _register_extra_titles() -> None:
@@ -116,8 +122,8 @@ def _register_extra_titles() -> None:
     from . import store as store_module
     store_module.NEEDS_USER_TITLES.setdefault("setup_incomplete",
                                               SETUP_INCOMPLETE_TITLE)
-    store_module.NEEDS_USER_TITLES.setdefault("llmwiki_review_required",
-                                              LLMWIKI_REVIEW_REQUIRED_TITLE)
+    for code, title in LLMWIKI_NEEDS_USER_TITLES.items():
+        store_module.NEEDS_USER_TITLES.setdefault(code, title)
 
 
 _register_extra_titles()
@@ -457,13 +463,17 @@ def _run_locked(trigger, deps, run_id, started):
             # 阶段——预检都没过，这一轮本来就不会开始调模型）。
             needs_user("llm_unavailable",
                        _truncate(getattr(error, "code", ""), 200))
-        # 引擎：health() 不通过就交给用户处理。
+        # 引擎：health() 不通过就交给用户处理。LLM Wiki 引擎（nashsu 版）
+        # 的几个代码有专门的文案和指引，直接用原因代码登记事项；
+        # 其他原因仍走通用的 engine_unavailable。
         try:
             engine = deps.make_engine(settings)
             ok, reason = engine.health()
         except (ImportError, ValueError) as error:
             ok, reason = False, _truncate(str(error), 200)
         if not ok:
+            if reason in LLMWIKI_NEEDS_USER_TITLES:
+                needs_user(reason, "")
             needs_user("engine_unavailable", _truncate(reason, 200))
 
         # ---------------- 第 2 步：扫描 ----------------
@@ -536,6 +546,17 @@ def _run_locked(trigger, deps, run_id, started):
                            message="正在下载、解析、入库、整理")
         process_started = deps.now()
         max_new = settings.get("max_new_per_run", 100)
+
+        # LLM Wiki 引擎的运行前准备：应用没运行就后台启动、确认当前
+        # 打开的就是这个知识库项目（轻量引擎没有 prepare 方法，跳过）。
+        # 放在处理阶段开头（ingest 前）：应用整理是异步的，先就位再放
+        # 来源文件。需要用户处理的情形（打开错项目等）直接停轮登记。
+        if hasattr(engine, "prepare"):
+            from .engines.llmwiki_app.engine import EngineNeedsUser
+            try:
+                engine.prepare()
+            except EngineNeedsUser as error:
+                needs_user(error.code, _truncate(error.detail, 200))
 
         def out_of_time():
             return deps.now() - process_started >= PROCESS_TIMEOUT
@@ -686,13 +707,8 @@ def _run_locked(trigger, deps, run_id, started):
                     result = None
                 else:
                     result = None
-            except Exception as error:
-                # LLM Wiki 引擎的"需要用户确认整理改动"：暂停并登记事项。
-                # 其他异常原样上抛，走未预期错误收尾。
-                from .engines.llmwiki.engine import ReviewRequired
-                if isinstance(error, ReviewRequired):
-                    needs_user("llmwiki_review_required",
-                               "LLM Wiki 有一组整理改动需要你在桌面版或控制台里确认")
+            except Exception:
+                # distill 抛出的未预期异常原样上抛，走未预期错误收尾。
                 raise
             if result is not None:
                 _apply_distill(ledger, record, distill_ids, result)
@@ -848,8 +864,13 @@ def _apply_distill(ledger, record, note_ids, result):
             per_note = {nid: {"status": "failed", "code": code}
                         for nid in note_ids}
     for note_id in note_ids:
-        outcome = per_note.get(note_id) or {"status": "failed",
-                                            "code": "distill_no_result"}
+        outcome = per_note.get(note_id)
+        if outcome is None:
+            # per_note 里没有这条：引擎没给出结论（LLM Wiki 引擎超时
+            # 未完成的笔记就是这样）。保持 ingested，下一次运行接着
+            # 核对——绝不能"一刀切"地算成功或失败（判成功会跳过核对
+            # 就清理原件，判失败会虚增失败次数）。
+            continue
         if outcome.get("status") == "ok":
             ledger.advance(note_id, "distilled")
             record["processed"]["distill"]["ok"] += 1
