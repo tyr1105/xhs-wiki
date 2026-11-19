@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from xhs_wiki.store import SKILL_TARGETS
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -349,6 +351,206 @@ assert.equal(responses.length,0);console.log('控制台事件验证通过');
 ''', encoding="utf-8")
     result = subprocess.run(
         [node, str(script), str(ROOT / "src/xhs_wiki/web/console.html")],
+        capture_output=True, text=True, timeout=15, check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "验证通过" in result.stdout
+
+# ---------------------------------------------------------------------------
+# "在哪些 AI 工具里提问"（向导第 6 步和日常页共用的勾选框）
+# ---------------------------------------------------------------------------
+
+def test_skill_target_text_covers_every_target(page):
+    """页面上每个安装位置都有给人看的文字，键和 store.SKILL_TARGETS 一一对应；
+    只有 Claude Code 和 Codex 命令行实测过，其余都如实写"还没实测"。"""
+    block = page.split("const SKILL_TARGET_TEXT={", 1)[1].split("\n};", 1)[0]
+    keys = re.findall(r"^\s*(\w+):\{title:", block, re.M)
+    assert keys == list(SKILL_TARGETS)
+    checks = dict(re.findall(r"^\s*(\w+):\{title:'[^']*',check:'([^']*)'", block, re.M))
+    assert set(checks) == set(SKILL_TARGETS)
+    assert checks["claude_code"] == "实测过"
+    assert checks["agents"].startswith("Codex 命令行实测过")
+    for target in SKILL_TARGETS:
+        if target not in ("claude_code", "agents"):
+            assert checks[target] == "还没实测", target
+    # Gemini CLI 已换成 Antigravity CLI、Qoder CN 分 IDE 和命令行，都要写清。
+    assert "Antigravity CLI" in block and "2026-06-18" in block
+    assert "Qoder CN 命令行版" in block and "VS Code 里的 GitHub Copilot" in block
+
+
+SKILL_SCENARIOS = {
+    "rows_highlight_and_draft": r"""
+await run("updateSkillTargetRows('daily',"+JSON.stringify(targets({workbuddy:{detected_tools:['WorkBuddy']}}))+")");
+const box=byId('d-skill-targets');
+assert.deepEqual(box.querySelectorAll('input[type=checkbox]').map(i=>i.dataset.target),IDS);
+const more=box.querySelector('[data-role=more]');
+assert.equal(more.open,false);
+assert.equal(more.querySelectorAll('input[type=checkbox]').length,IDS.length-3);
+const wb=box.querySelector('input[data-target="workbuddy"]');
+assert(text(wb.closest('.choice')).includes('本机有 WorkBuddy'));
+assert(text(wb.closest('.choice')).includes('（还没实测）'));
+assert(text(box.querySelector('input[data-target="claude_code"]').closest('.choice')).includes('（实测过）'));
+assert(!wb.closest('.choice').classList.contains('on'));
+// 点一下立刻高亮，不用等下一次轮询。
+wb.checked=true;wb.events.change();
+assert(wb.closest('.choice').classList.contains('on'));
+assert.equal(JSON.stringify(await run('skillDraft.daily')),JSON.stringify(['claude_code','workbuddy']));
+// 轮询拿到的还是旧设置：用户没保存的勾选不被覆盖。
+await run("updateSkillTargetRows('daily',"+JSON.stringify(targets())+")");
+assert.equal(wb.checked,true);
+assert(wb.closest('.choice').classList.contains('on'));
+// 一切正常的保存：提示"已保存"，草稿清掉，之后跟着服务端走。
+responses.push({status:200,data:{skill_targets:targets({workbuddy:{selected:true,installed:true,state:'installed',last_result:'installed'}}),results:{claude_code:'installed',workbuddy:'installed'}}});
+await byId('d-skill-save').events.click();
+assert.equal(JSON.stringify(requests[0].body.targets),JSON.stringify(['claude_code','workbuddy']));
+assert(byId('d-skill-hint').textContent.startsWith('已保存 ✓'));
+assert.equal(await run('skillDraft.daily'),null);
+assert(text(wb.closest('.choice')).includes('已装好'));
+""",
+    "save_reports_each_problem": r"""
+await run("updateSkillTargetRows('daily',"+JSON.stringify(targets())+")");
+const box=byId('d-skill-targets');
+const pick=id=>box.querySelector('input[data-target="'+id+'"]');
+for(const id of ['workbuddy','agents']){pick(id).checked=true;pick(id).events.change()}
+responses.push({status:200,data:{
+  skill_targets:targets({workbuddy:{selected:true,last_result:'failed'},
+                         agents:{selected:true,state:'foreign',last_result:'kept_foreign'},
+                         kiro:{installed:true,state:'installed',last_result:'failed'},
+                         cline:{symlink:true,last_result:'kept_symlink'}}),
+  results:{claude_code:'installed',workbuddy:'failed',agents:'kept_foreign',kiro:'failed',cline:'kept_symlink'}}});
+await byId('d-skill-save').events.click();
+assert.equal(JSON.stringify(requests[0].body.targets),JSON.stringify(['claude_code','workbuddy','agents']));
+const hint=byId('d-skill-hint');
+assert(hint.className.includes('err'));
+assert(hint.textContent.includes('这些工具的技能没写成功：WorkBuddy（腾讯）'));
+assert(hint.textContent.includes('这些工具的技能没撤掉：Kiro（AWS）'));
+assert(hint.textContent.includes('这些位置已有别人写的同名技能，没有覆盖也没有删：Codex'));
+assert(hint.textContent.includes('这些位置的技能文件夹是符号链接，没有动它：Cline'));
+assert(!hint.textContent.includes('已保存'));
+assert(text(pick('workbuddy').closest('.choice')).includes('上次没写成功'));
+assert(text(pick('kiro').closest('.choice')).includes('上次没撤掉'));
+assert(text(pick('agents').closest('.choice')).includes('已有别人写的同名技能，没有动它'));
+assert(!text(pick('agents').closest('.choice')).includes('已装好'));
+assert(text(pick('cline').closest('.choice')).includes('是符号链接，没有动它'));
+""",
+    "wizard_save_failure_blocks_finish": r"""
+await run("updateSkillTargetRows('wizard',"+JSON.stringify(targets())+")");
+await run('wizStep=6');
+responses.push({status:400,data:{error:'skill_targets_invalid'}});
+await run('wizNext()');
+assert.equal(JSON.stringify(requests.map(r=>r.path)),JSON.stringify(['/api/skill-targets']));
+assert(byId('w6-hint').textContent.startsWith('保存失败'));
+assert.equal(await run('wizStep'),6);
+assert.equal(refreshed,0);
+""",
+    "wizard_partial_failure_still_finishes": r"""
+await run("updateSkillTargetRows('wizard',"+JSON.stringify(targets())+")");
+const wb=byId('w-skill-targets').querySelector('input[data-target="workbuddy"]');
+wb.checked=true;wb.events.change();
+await run('wizStep=6');
+responses.push(
+  {status:200,data:{skill_targets:targets({workbuddy:{selected:true,last_result:'failed'}}),results:{claude_code:'installed',workbuddy:'failed'}}},
+  {status:200,data:{ok:true,setup_completed:true,assets_ready:true,skill_results:{claude_code:'installed',workbuddy:'failed'}}});
+await run('wizNext()');
+assert.equal(JSON.stringify(requests.map(r=>r.path)),JSON.stringify(['/api/skill-targets','/api/setup/finish']));
+const hint=byId('wiz-hint').textContent;
+assert(hint.startsWith('设置完成，已开始第一次整理 ✓'),hint);
+assert.equal(hint.split('WorkBuddy（腾讯）').length-1,1,hint);
+assert.equal(refreshed,1);
+""",
+    "kb_root_change_reports_skill_failure": r"""
+await run("$('w-kb-root').value='/tmp/generated-kb';wizStep=1");
+responses.push({status:200,data:{ok:true,kb_root:'/tmp/generated-kb',migrated:false,moved:null,skill_results:{claude_code:'installed',agents:'failed'}}});
+await run('wizNext()');
+assert.equal(await run('wizStep'),2);
+const hint=byId('wiz-hint');
+assert(hint.textContent.startsWith('这些工具的技能没写成功：Codex'),hint.textContent);
+assert(hint.className.includes('err'));
+""",
+    "daily_engine_change_reports_skill_failure": r"""
+await run("last={settings:{engine:'markdown'}};$('e-engine').value='markdown';$('e-provider').value='claude_code';$('e-model').value='generated-model'");
+responses.push({status:200,data:{}},{status:200,data:{ok:true,engine:'markdown',skill_results:{claude_code:'installed',kiro:'failed'}}});
+await byId('engine-form').events.submit({preventDefault(){}});
+const hint=byId('engine-hint');
+assert(hint.textContent.startsWith('已保存。新设置只影响之后整理的内容。这些工具的技能没写成功：Kiro（AWS）'),hint.textContent);
+assert(hint.className.includes('err'));
+""",
+}
+
+# 上面这些场景共用的假 DOM 和假 fetch（Node 脚本的开头和结尾）。
+SKILL_HARNESS_HEAD = r"""
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const html=fs.readFileSync(process.argv[2],'utf8');
+const IDS=JSON.parse(process.argv[3]);
+// 注册全部实际事件，但跳过页面末尾的首次刷新和定时轮询。
+const source=html.split('<script>')[1].split('</script>')[0].split('\nonProviderChange();\nshowWizStep();\nrefresh();')[0];
+function matches(n,sel){
+ if(!n.tagName)return false;
+ let m;
+ if((m=sel.match(/^\.([\w-]+)$/)))return n.classList.contains(m[1]);
+ if(sel==='input[type=checkbox]')return n.tagName==='input'&&n.type==='checkbox';
+ if((m=sel.match(/^input\[data-target="([\w-]+)"\]$/)))return n.tagName==='input'&&n.dataset.target===m[1];
+ if((m=sel.match(/^\[data-role=([\w-]+)\]$/)))return n.dataset.role===m[1];
+ return false;
+}
+function makeNode(tag){
+ const classes=new Set();
+ return {tagName:tag,children:[],parent:null,dataset:{},style:{},attrs:{},events:{},textContent:'',value:'',checked:false,type:'',open:false,disabled:false,options:[],
+  get className(){return [...classes].join(' ')},
+  set className(v){classes.clear();String(v).split(/\s+/).filter(Boolean).forEach(c=>classes.add(c))},
+  classList:{add:(...c)=>c.forEach(x=>classes.add(x)),remove:(...c)=>c.forEach(x=>classes.delete(x)),
+    toggle:(c,force)=>{const on=force===undefined?!classes.has(c):Boolean(force);if(on)classes.add(c);else classes.delete(c);return on},
+    contains:c=>classes.has(c)},
+  get childElementCount(){return this.children.filter(c=>c.tagName).length},
+  append(...items){for(const item of items){item.parent=this;this.children.push(item)}},
+  replaceChildren(...items){this.children=[];this.append(...items)},
+  addEventListener(k,f){this.events[k]=f},
+  setAttribute(k,v){this.attrs[k]=v},
+  closest(sel){let cur=this;while(cur){if(matches(cur,sel))return cur;cur=cur.parent}return null},
+  querySelectorAll(sel){const out=[];const walk=x=>{for(const c of x.children){if(matches(c,sel))out.push(c);if(c.children)walk(c)}};walk(this);return out},
+  querySelector(sel){return this.querySelectorAll(sel)[0]||null}};
+}
+const nodes=new Map(),responses=[],requests=[];
+function byId(id){if(!nodes.has(id)){const n=makeNode('div');n.id=id;nodes.set(id,n)}return nodes.get(id)}
+// 一个元素连同里面所有文字（标题、标签、提示）拼起来，方便查"页面上写了什么"。
+const text=n=>(n.textContent||'')+(n.children||[]).map(text).join('');
+function targets(over={}){
+ return IDS.map(id=>Object.assign({id,selected:id==='claude_code',detected_tools:[],path:'~/generated/'+id+'/xhs-wiki',
+   state:id==='claude_code'?'installed':'absent',installed:id==='claude_code',symlink:false,last_result:null},over[id]||{}));
+}
+let refreshed=0;
+const context=vm.createContext({document:{getElementById:byId,querySelector:()=>({content:'fake'}),createElement:makeNode,createTextNode:t=>({textContent:t})},
+ AbortSignal:{timeout:n=>n},Intl,Date,console,confirm:()=>true,alert:message=>{throw Error(message)},
+ fetch:async(path,options)=>{requests.push({path,body:JSON.parse(options.body)});assert(responses.length,'出现未安排的请求：'+path);const r=responses.shift();return {status:r.status,json:async()=>r.data}}});
+vm.runInContext(source,context);
+context.recordRefresh=()=>{refreshed++};
+vm.runInContext('refresh=recordRefresh',context);
+async function run(code){return vm.runInContext(code,context)}
+(async()=>{
+"""
+SKILL_HARNESS_TAIL = r"""
+assert.equal(responses.length,0);console.log('勾选框逻辑验证通过');
+})().catch(e=>{console.error(e);process.exitCode=1});
+"""
+
+
+@pytest.mark.parametrize("scenario", sorted(SKILL_SCENARIOS))
+def test_skill_targets_javascript_with_fake_dom(tmp_path, scenario):
+    """执行页面里真实的勾选框、保存和向导逻辑（假 DOM、假 fetch）。
+
+    这里的假 DOM 比上面的多实现一点：子节点、按类名和属性找元素、classList
+    真的记状态，才能检查一行行建出来的样子和高亮。假 fetch 逐项消费预设
+    响应，多发一个请求就失败；刷新只记次数，不访问本地服务。
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("可选的本地 JavaScript 运行器 Node 未安装；不安装新依赖")
+    script = tmp_path / "skill_targets_fake_dom.js"
+    script.write_text(SKILL_HARNESS_HEAD + SKILL_SCENARIOS[scenario] + SKILL_HARNESS_TAIL,
+                      encoding="utf-8")
+    result = subprocess.run(
+        [node, str(script), str(ROOT / "src/xhs_wiki/web/console.html"),
+         json.dumps(list(SKILL_TARGETS))],
         capture_output=True, text=True, timeout=15, check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr

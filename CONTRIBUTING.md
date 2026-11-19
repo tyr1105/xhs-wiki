@@ -25,10 +25,10 @@ uv run pytest -q   # 运行全部测试：不联网、不调用真实模型
 本地试用控制台：
 
 ```bash
-XHS_WIKI_HOME="$PWD/.tmp-home" XHS_WIKI_SKILLS_ROOT="$PWD/.tmp-home/skills" uv run xhs-wiki serve
+XHS_WIKI_HOME="$PWD/.tmp-home" XHS_WIKI_SKILLS_ROOT="$PWD/.tmp-home/skills" XHS_WIKI_TOOLS_HOME="$PWD/.tmp-home/tools" uv run xhs-wiki serve
 ```
 
-上面两个环境变量把数据目录和 Skill 安装位置指到仓库内的临时目录，不会动你真实安装的数据。运行时生成的文件都已被 `.gitignore` 忽略。用完删掉 `.tmp-home` 即可。
+上面三个环境变量把数据目录、Claude Code 的技能目录和其他 AI 工具（WorkBuddy、Codex 等）的技能目录都指到仓库内的临时目录，不会动你真实安装的数据：在控制台里勾选、取消哪个工具，都只写、删 `.tmp-home` 里的文件。这样设置后，页面上不会显示"本机有 xx"（检测也只看 `.tmp-home/tools`），属于正常。运行时生成的文件都已被 `.gitignore` 忽略。用完删掉 `.tmp-home` 即可。
 
 ## 代码规范
 

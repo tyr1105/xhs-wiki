@@ -204,12 +204,15 @@ def test_uninstall_refuses_case_variant_of_home(sandbox):
 # ---------------------------------------------------------------------------
 
 def _install_shared_files(sandbox):
-    """正式安装在用的日志和 Skill（虚构内容）。"""
+    """正式安装在用的日志和 Skill（虚构内容）。SKILL.md 带本工具的归属标记：
+    卸载只删认得出是本工具写的 SKILL.md（见 uninstall.sh 的 skill_file_is_ours）。"""
     sandbox.logs.mkdir(parents=True)
     (sandbox.logs / "daemon.log").write_text("generated log", encoding="utf-8")
     skill = sandbox.skills / "xhs-wiki"
     skill.mkdir(parents=True)
-    (skill / "SKILL.md").write_text("generated skill", encoding="utf-8")
+    (skill / "SKILL.md").write_text(
+        "---\nname: xhs-wiki\ndescription: 虚构\n---\n<!-- managed-by: xhs-wiki -->\n",
+        encoding="utf-8")
 
 
 def test_uninstall_with_mistyped_app_home_deletes_nothing(sandbox):
