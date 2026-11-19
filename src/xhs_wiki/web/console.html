@@ -84,6 +84,9 @@ footer{margin-top:22px;color:var(--muted);font-size:12px;display:flex;justify-co
 .choice .mark{font-weight:600;color:var(--blue)}
 .choice p{margin:2px 0 0;color:var(--muted);font-size:12px}
 .warnbox{border:1px solid #f3d9a6;background:#fffaf0;color:var(--amber);border-radius:8px;padding:10px 14px;font-size:13px;margin-top:10px}
+/* 带按钮的权限提示条：不用内联 display（内联样式盖不住 .hidden），
+   靠下面的普通规则 + .hidden 的 !important 实现显示/隐藏。 */
+.permbox{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 /* ---------------- 资源准备进度条：组件/语音模型后台下载时显示在页面最顶部 ---------------- */
 .assets-bar{background:#fff8e6;border-bottom:1px solid #f3d9a6;padding:10px 36px;font-size:13px;color:var(--amber);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .assets-bar .bar{display:inline-block;width:120px;height:8px;border-radius:6px;background:#f3e3c3;overflow:hidden;vertical-align:middle}
@@ -94,8 +97,8 @@ footer{margin-top:22px;color:var(--muted);font-size:12px;display:flex;justify-co
 </style>
 </head>
 <body>
-<!-- 资源准备进度条。下载组件、语音模型和按需选择的 LLM Wiki 后台
-     由服务下载；需要的资源都就绪后整条自动隐藏。 -->
+<!-- 资源准备进度条。下载组件和语音模型由服务下载；
+     需要的资源都就绪后整条自动隐藏。 -->
 <div class="assets-bar hidden" id="assets-bar">
   <span>准备中：</span>
   <span id="assets-text"></span>
@@ -149,6 +152,8 @@ footer{margin-top:22px;color:var(--muted);font-size:12px;display:flex;justify-co
     <span>知识库主题 <b id="kb-topics">—</b></span>
     <span>来源 <b id="kb-sources">—</b></span>
     <span>暂缓 <b id="kb-deferred">—</b></span>
+    <!-- LLM Wiki 引擎才有：待审核条数；读不到时整个不显示 -->
+    <span id="kb-review-span" class="hidden">LLM Wiki 待审核 <b id="kb-review">—</b> 条（在 LLM Wiki 的审核页处理，不影响整理）</span>
     <span>累计清理 <b id="cleanup-total">—</b></span>
     <span>磁盘剩余 <b id="disk-free">—</b> / <b id="disk-total">—</b></span>
     <!-- 服务端用 /usr/bin/open -R 在访达里选中知识库目录，不会启动任何程序 -->
@@ -204,22 +209,32 @@ footer{margin-top:22px;color:var(--muted);font-size:12px;display:flex;justify-co
           <option value="llmwiki">LLM Wiki（进阶）</option>
         </select>
       </label>
-      <label class="field">提供方
-        <select id="e-provider" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px">
-          <option value="claude_code">Claude Code</option>
-          <option value="codex">Codex</option>
-          <option value="anthropic">Anthropic API</option>
-          <option value="openai_compatible">OpenAI 兼容接口</option>
-        </select>
-      </label>
-      <label class="field">模型名
-        <input type="text" id="e-model" placeholder="模型名">
-      </label>
+      <!-- LLM Wiki 引擎的整理模型在 LLM Wiki 应用里选，这两项只在轻量引擎时显示 -->
+      <span id="e-llm-fields" style="display:contents">
+        <label class="field">提供方
+          <select id="e-provider" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px">
+            <option value="claude_code">Claude Code</option>
+            <option value="codex">Codex</option>
+            <option value="anthropic">Anthropic API</option>
+            <option value="openai_compatible">OpenAI 兼容接口</option>
+          </select>
+        </label>
+        <label class="field">模型名
+          <input type="text" id="e-model" placeholder="模型名">
+        </label>
+      </span>
       <button class="primary" type="submit">保存引擎和模型</button>
       <span class="hint" id="engine-hint"></span>
     </form>
+    <p class="subtle hidden" id="e-llmwiki-note" style="margin:10px 0 0">LLM Wiki 引擎的整理模型在 LLM Wiki 应用的设置 → LLM Models 里选择和配置；要换模型请回到 LLM Wiki 里改。</p>
     <!-- API 类提供方在日常页没有密钥/base_url 输入框，换 Key 要走「重新设置」 -->
     <p class="subtle hidden" id="e-key-tip" style="margin:10px 0 0">换成 API 方式或修改密钥，请点「重新设置」。</p>
+    <!-- LLM Wiki 设置文件权限过宽时的提示（密钥明文存储，见 PRD 6.2） -->
+    <div class="warnbox permbox hidden" id="e-llmwiki-perm">
+      <span id="e-llmwiki-perm-text"></span>
+      <button id="e-llmwiki-tighten">收紧为仅本人可读</button>
+      <span class="hint" id="e-llmwiki-perm-hint"></span>
+    </div>
     <p class="subtle" style="margin:10px 0 0">改了引擎或模型之后要提示：新设置只影响之后整理的内容。</p>
     <!-- 重新设置按钮。已整理的内容不会删除，只是把首次向导再走一遍。 -->
     <div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap">
@@ -306,8 +321,13 @@ footer{margin-top:22px;color:var(--muted);font-size:12px;display:flex;justify-co
     </div>
     <div class="card" id="w-engine-llmwiki" role="button" tabindex="0" aria-disabled="false">
       <h3>LLM Wiki 引擎（进阶）</h3>
-      <p>在 LLM Wiki 桌面版里也能打开，有图谱和版本管理；第一次选择会额外下载<span id="w-engine-llmwiki-size">后台程序（大小待确认）</span>。整理时需要关闭 LLM Wiki 桌面版；只能用 Claude Code 或 Codex 整理。</p>
-      <span class="badge" id="w-engine-llmwiki-badge">点一下开始下载</span>
+      <p>用 LLM Wiki 桌面应用整理（开源，nashsu/llm_wiki），有图谱、问答，整理用的模型在 LLM Wiki 里选，支持 Anthropic、OpenAI 等 API 和 Claude Code、Codex。需要先安装 LLM Wiki，并保持它在后台运行。</p>
+    </div>
+    <!-- 选中 LLM Wiki 后显示的检查结果和指引（文案由脚本按原因代码填） -->
+    <div class="hidden" id="w2-check" style="margin-top:10px">
+      <div class="warnbox hidden" id="w2-guidance"></div>
+      <p class="hint ok hidden" id="w2-passed">LLM Wiki 检查通过 ✓</p>
+      <button id="w2-recheck">重新检查</button>
     </div>
     <p class="hint" id="w2-hint"></p>
   </div>
@@ -315,31 +335,47 @@ footer{margin-top:22px;color:var(--muted);font-size:12px;display:flex;justify-co
   <!-- 第 3 步：整理模型 -->
   <div id="w3" class="hidden">
     <h2>第 3 步 · 整理模型</h2>
-    <label class="field">提供方
-      <select id="w-provider" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px">
-        <option value="claude_code">Claude Code（用你的订阅，本机需已登录）</option>
-        <option value="codex">Codex（用你的订阅，本机需已登录）</option>
-        <option value="anthropic">Anthropic API（按量付费，需要 API Key）</option>
-        <option value="openai_compatible">OpenAI 兼容接口（DeepSeek、通义千问等，需要 Key）</option>
-      </select>
-    </label>
-    <p class="subtle hidden" id="w-provider-engine-tip">LLM Wiki 引擎只能用 Claude Code 或 Codex 整理</p>
-    <label class="field" style="margin-top:10px">模型名
-      <input type="text" id="w-model" placeholder="模型名">
-    </label>
-    <label class="field hidden" id="w-base-url-row" style="margin-top:10px">接口地址 base_url（https:// 开头）
-      <input type="text" id="w-base-url" placeholder="https://…/v1">
-    </label>
-    <div class="hidden" id="w-key-row" style="margin-top:10px">
-      <label class="field">API Key（只存进 macOS 钥匙串，不写进任何文件）
-        <input type="password" id="w-key" autocomplete="off" placeholder="sk-…">
+    <!-- 轻量引擎：xhs-wiki 自己的提供方 / 模型名 / Key 表单 -->
+    <div id="w-llm-fields">
+      <label class="field">提供方
+        <select id="w-provider" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px">
+          <option value="claude_code">Claude Code（用你的订阅，本机需已登录）</option>
+          <option value="codex">Codex（用你的订阅，本机需已登录）</option>
+          <option value="anthropic">Anthropic API（按量付费，需要 API Key）</option>
+          <option value="openai_compatible">OpenAI 兼容接口（DeepSeek、通义千问等，需要 Key）</option>
+        </select>
       </label>
-      <p class="subtle">提交后输入框会立即清空；Key 不会出现在页面、日志或状态里。</p>
+      <label class="field" style="margin-top:10px">模型名
+        <input type="text" id="w-model" placeholder="模型名">
+      </label>
+      <label class="field hidden" id="w-base-url-row" style="margin-top:10px">接口地址 base_url（https:// 开头）
+        <input type="text" id="w-base-url" placeholder="https://…/v1">
+      </label>
+      <div class="hidden" id="w-key-row" style="margin-top:10px">
+        <label class="field">API Key（只存进 macOS 钥匙串，不写进任何文件）
+          <input type="password" id="w-key" autocomplete="off" placeholder="sk-…">
+        </label>
+        <p class="subtle">提交后输入框会立即清空；Key 不会出现在页面、日志或状态里。</p>
+      </div>
+      <p class="subtle" id="w-model-tip" style="margin-top:8px"></p>
     </div>
-    <p class="subtle" id="w-model-tip" style="margin-top:8px"></p>
+    <!-- LLM Wiki 引擎：模型在 LLM Wiki 应用里选，这里只检查和测试 -->
+    <div class="hidden" id="w-llmwiki-panel">
+      <p class="subtle">整理用的模型在 LLM Wiki 的设置 → LLM Models 里选择，xhs-wiki 不保存你的密钥。</p>
+      <ol class="subtle" style="margin:8px 0 0;padding-left:20px">
+        <li>在 LLM Wiki 的设置 → LLM Models 里，添加或选择一个提供方，按需填好密钥（支持 Anthropic、OpenAI 等 API 和 Claude Code、Codex）；</li>
+        <li>把「Ingest model（整理用模型）」选成这个提供方；</li>
+        <li>回到这里，点「重新检查」看检查结果，再用「测试」按钮试一次真实整理。</li>
+      </ol>
+      <div class="warnbox">用 Claude 5 系列模型（如 claude-haiku-5-5）时，不要用内置的「Anthropic (Claude)」选项（会被接口拒绝）。请添加自定义提供方（Add custom provider）：协议选 Anthropic-compat，Endpoint 填 https://api.anthropic.com，模型填 claude-haiku-5-5，再把「Ingest model」选成这个自定义提供方。</div>
+      <h2 style="margin-top:16px">检查结果</h2>
+      <div class="list" id="w-llmwiki-check"><div class="subtle">还没检查</div></div>
+      <p class="subtle" id="w-llmwiki-testnote" style="margin-top:8px">「测试」会在知识库里放一条虚构示例笔记，由 LLM Wiki 用你选的模型整理一遍；结束后示例来源文件会自动删除，LLM Wiki 里会留下一个示例来源页，可以在 LLM Wiki 里删除。</p>
+    </div>
     <!-- 按钮单独一行（white-space:nowrap 保证按钮文字不折行），
-         测试结果的提示放到按钮下面独占一行——提示文案可能很长，
-         挤在同一行会把"保存模型设置"压成两行（375 宽的窄屏上尤其明显）。 -->
+         提示结果的文字放到按钮下面独占一行——提示文案可能很长，
+         挤在同一行会把"保存模型设置"压成两行（375 宽的窄屏上尤其明显）。
+         选了 LLM Wiki 引擎时，左边按钮变成「重新检查」。 -->
     <div style="display:flex;gap:10px;margin-top:12px;align-items:center">
       <button id="w-save-llm">保存模型设置</button>
       <button id="w-test-llm">测试</button>
@@ -413,6 +449,15 @@ const STAGE_LABELS={discovered:'待下载',downloaded:'待解析',parsed:'待入
 const MODEL_TIPS={claude_code:'已填入建议模型名，可按需修改',codex:'留空 = 使用 Codex 的默认模型',
   anthropic:'已填入建议模型名，可按需修改',openai_compatible:'填写服务商的模型名'};
 const MODEL_DEFAULTS={claude_code:'claude-haiku-5-5',anthropic:'claude-haiku-5-5',codex:'',openai_compatible:''};
+let last=null,qrTimer=null,qrShown=false,wizStep=1,engineChoice='markdown',limitChoice=20;
+/* 引擎选择是向导本地草稿；第 2 步的健康检查（/api/setup/engine）通过后
+   服务端才会保存。healthResult 记录一次检查结果，防止每次状态轮询都
+   重新检查一遍。 */
+let engineTouched=false,llmwikiChecking=false,llmwikiHealthResult=null;
+/* 第 3 步 LLM Wiki 检查结果（/api/setup/llmwiki-model，只读）：
+   llmwikiModelAt 记录上次取数时间，超过 30 秒且用户正停在第 3 步才
+   自动再取一次；手动点「重新检查」总是立刻取。 */
+let llmwikiModelInfo=null,llmwikiModelFetching=false,llmwikiModelAt=0;
 /* 用户是否手动改过模型名：renderWizard 每 5 秒轮询都会调 onProviderChange，
    没有这个标记的话，轮询会把用户刚输入的模型名一遍遍冲掉。
    切换提供方时重置标记——换了提供方，旧的模型名通常不再适用。 */
@@ -423,13 +468,6 @@ let providerTouched=false;
 /* 第 1 步的知识库位置是否已从服务端回填过。回填之前输入框是
    禁用的——否则用户先点进去打字，异步回填的内容会插到用户输入中间。 */
 let kbRootLoaded=false;
-let last=null,qrTimer=null,qrShown=false,wizStep=1,engineChoice='markdown',limitChoice=20;
-/* 引擎选择是向导本地草稿；下载完成且健康检查通过之前，服务端不保存。
-   healthResult 记录一次检查结果，防止每次状态轮询都启动一次后台。 */
-let engineTouched=false,llmwikiRequested=false,llmwikiChecking=false,llmwikiHealthResult=null;
-let llmwikiAsset=null,llmwikiSupported=null;
-/* 保留完整选项节点，切回轻量引擎时可原样恢复 API 提供方。 */
-const WIZ_PROVIDER_OPTIONS=Array.from($('w-provider').options);
 /* 用户是否手动点过第 5 步的导入范围选项（做法同 providerTouched）。 */
 let limitTouched=false;
 
@@ -547,14 +585,12 @@ const CODE_LABELS={
   engine_unavailable:'这个引擎暂不可用',
   engine_not_available:'所选引擎尚未提供',
   engine_selection_changed:'引擎选择已经改变，本次检查结果未保存，请按当前选择重试',
-  llmwiki_app_missing:'没有找到 LLM Wiki 应用，请先安装（0.6.13 或更高版本）',
-  llmwiki_app_too_old:'LLM Wiki 版本过低，请升级到 0.6.13 或更高',
-  llmwiki_unsupported_platform:'仅支持 Apple 芯片的 Mac',
-  llmwiki_agent_missing:'没找到所选的 Claude Code 或 Codex，请先安装并登录后再试',
-  llmwiki_wrapper_failed:'LLM Wiki 的模型调用脚本没能准备好，请检查程序目录的写入权限后重试',
-  llmwiki_provider_unsupported:'LLM Wiki 引擎只能用 Claude Code 或 Codex 整理',
-  llmwiki_desktop_running:'LLM Wiki 桌面版正在运行，请先关闭再试',
-  backend_start_timeout:'LLM Wiki 后台启动超时，请稍后再试',
+  llmwiki_app_missing:'没找到 LLM Wiki 应用：请到 github.com/nashsu/llm_wiki 的 Releases 下载 0.6.13 或更新版本的 .dmg 安装，装好后点「重新检查」',
+  llmwiki_app_too_old:'LLM Wiki 版本过低，请升级到 0.6.13 或更新版本后点「重新检查」',
+  llmwiki_project_invalid:'知识库位置还不是 LLM Wiki 项目：请在 LLM Wiki 里新建项目，或回到第 1 步选一个已有的 LLM Wiki 项目文件夹',
+  llmwiki_state_missing:'没找到 LLM Wiki 的设置文件，请先打开一次 LLM Wiki 再试',
+  llmwiki_chmod_failed:'收紧权限没有成功，请稍后再试',
+  llmwiki_selftest_timeout:'5 分钟内没有整理完，请确认 LLM Wiki 正在运行且模型可用，稍后再试',
   llm_invalid:'整理模型配置不合法',
   llm_provider_invalid:'提供方不合法',
   llm_model_invalid:'模型名格式不对：最长 100 个字符；轻量引擎允许字母、数字和 . _ : / @ -，LLM Wiki 不接受 / 或 @；Codex 留空表示默认模型',
@@ -581,7 +617,7 @@ const CODE_LABELS={
   llmwiki_model_not_found:'模型名不对，请到 LLM Wiki 设置里改',
   llmwiki_ingest_failed:'LLM Wiki 整理失败，详情见它的任务队列',
   llmwiki_record_unreadable:'LLM Wiki 的整理记录读不懂（可能版本不兼容），未删除任何原件',
-  llmwiki_model_missing:'LLM Wiki 还没配置整理用的模型，请在它的设置里选择并填好密钥',
+  llmwiki_model_missing:'LLM Wiki 还没配置整理用的模型：请在它的设置 → LLM Models 里选择提供方、填好密钥，并把 Ingest model 指向它',
   asr_model_invalid:'语音模型只能是 Whisper 或 SenseVoice',
   schema_version_invalid:'设置文件版本不兼容',
   /* ---- 需要用户处理的事项代码（也作为停止原因出现） ---- */
@@ -589,7 +625,6 @@ const CODE_LABELS={
   xhs_blocked:'小红书要求验证或拒绝访问，已暂停',
   disk_low:'磁盘剩余空间不足，已暂停下载',
   llm_unavailable:'整理模型不可用，请在控制台检查设置',
-  llmwiki_review_required:'LLM Wiki 有一组整理改动待确认',
   assets_not_ready:'组件还在下载，完成后会自动开始',
   /* ---- 下载 / 解析常见失败 ---- */
   network_error:'网络错误',
@@ -614,8 +649,6 @@ const CODE_LABELS={
   topic_page_invalid_output:'主题页更新结果不合格',
   topic_page_invalid:'主题页没写成，相关笔记稍后自动重试',
   source_ref_missing:'台账里缺少这条笔记的入库引用',
-  no_final_commit:'LLM Wiki 没有生成最终提交',
-  consumption_not_verified:'LLM Wiki 未能确认来源已写入',
   /* ---- 安装资源下载（assets） ---- */
   assets_network_error:'网络错误，下载中断',
   assets_sha256_mismatch:'下载的内容校验不过（文件损坏或来源变了）',
@@ -659,9 +692,9 @@ function plainCode(code){
 function renderAssets(assets){
   const bar=$('assets-bar');
   if(!assets){bar.classList.add('hidden');return}
-  const NAMES={xhs_downloader:'下载组件',asr_model:'语音模型',llmwiki:'LLM Wiki 后台'};
+  const NAMES={xhs_downloader:'下载组件',asr_model:'语音模型'};
   const parts=[];let anyFailed=false,allReady=true;
-  for(const kind of ['xhs_downloader','asr_model','llmwiki']){
+  for(const kind of ['xhs_downloader','asr_model']){
     const a=assets[kind];
     if(!a||a.state==='not_needed')continue;
     if(a.state==='ready'){parts.push({text:NAMES[kind]+' ✓',cls:'ok'});continue}
@@ -828,6 +861,9 @@ function render(data){
   $('kb-topics').textContent=num(kb.topics);
   $('kb-sources').textContent=num(kb.sources);
   $('kb-deferred').textContent=num(kb.deferred);
+  /* LLM Wiki 待审核条数：服务端读不到时不给这个键，这里整项隐藏。 */
+  $('kb-review-span').classList.toggle('hidden',kb.review_pending==null);
+  if(kb.review_pending!=null){$('kb-review').textContent=num(kb.review_pending)}
   $('cleanup-total').textContent=fmtBytes(data.cleanup_total_bytes||0);
   $('disk-free').textContent=(data.disk&&data.disk.free_gb!=null)?data.disk.free_gb+' GiB':'—';
   $('disk-total').textContent=(data.disk&&data.disk.total_gb!=null)?data.disk.total_gb+' GiB':'—';
@@ -839,6 +875,15 @@ function render(data){
   const llm=(s.llm)||data.llm||{};
   if(document.activeElement!==$('e-model')){$('e-engine').value=s.engine||'markdown';
     $('e-provider').value=llm.provider||'claude_code';$('e-model').value=llm.model||''}
+  /* 日常页引擎表单：LLM Wiki 引擎时提供方/模型输入框换成说明文字
+     （模型在 LLM Wiki 应用里选）；同时显示设置文件权限提示（体检）。 */
+  const wikiEngine=(s.engine||'markdown')==='llmwiki';
+  $('e-llm-fields').classList.toggle('hidden',wikiEngine);
+  $('e-llmwiki-note').classList.toggle('hidden',!wikiEngine);
+  if(!wikiEngine){updateEngineKeyTip()}else{$('e-key-tip').classList.add('hidden')}
+  const perm=data.llmwiki_state;
+  $('e-llmwiki-perm').classList.toggle('hidden',!(perm&&perm.loose));
+  if(perm&&perm.loose){$('e-llmwiki-perm-text').textContent='LLM Wiki 把密钥以明文保存在设置文件里，这个文件目前本机其他账号也能读'}
   /* 日常页没有接口地址输入框，保存模型时沿用服务端已保存的地址。
      即使用户正编辑模型名也要回填这项隐藏数据；空值要清掉旧地址，避免
      切换提供方后沿用上一次渲染留下的数据。 */
@@ -986,6 +1031,8 @@ async function saveSkillTargets(scope,hint){
 }
 /* 日常页提供方是 API 类（没有密钥输入框）时显示"请点重新设置"提示。 */
 function updateEngineKeyTip(){
+  /* LLM Wiki 引擎没有 xhs-wiki 自己的模型表单，也就没有这个提示。 */
+  if(($('e-engine').value||'markdown')==='llmwiki'){$('e-key-tip').classList.add('hidden');return}
   const p=$('e-provider').value;
   $('e-key-tip').classList.toggle('hidden',!(p==='anthropic'||p==='openai_compatible'));
 }
@@ -1036,13 +1083,13 @@ function wizHint(text,err){
   const hint=$('wiz-hint');hint.className='hint'+(err?' err':'');hint.textContent=text||'';
 }
 /* 同一页面可以多次走向导。每次重新设置都丢弃上轮草稿和健康缓存，
-   等状态接口回填现在的设置，避免沿用已经失效的引擎选择或可用角标。 */
+   等状态接口回填现在的设置，避免沿用已经失效的引擎选择或检查结论。 */
 function resetWizardDraft(){
   wizStep=1;engineChoice='markdown';engineTouched=false;providerTouched=false;modelTouched=false;
   limitTouched=false;kbRootLoaded=false;skillDraft.wizard=null;
-  llmwikiRequested=false;llmwikiChecking=false;llmwikiHealthResult=null;llmwikiAsset=null;
-  // 上轮可能只剩两个命令行选项，先恢复完整列表，再接受服务端回填。
-  filterWizardProviders();
+  llmwikiChecking=false;llmwikiHealthResult=null;
+  llmwikiModelInfo=null;llmwikiModelAt=0;
+  $('w2-check').classList.add('hidden');
   $('w-kb-root').disabled=true;
   $('w2-hint').textContent='';$('w3-hint').textContent='';wizHint('');
 }
@@ -1051,9 +1098,6 @@ function renderWizard(data){
   if(!engineTouched){engineChoice=(data.settings||{}).engine||'markdown'}
   $('w-engine-markdown').classList.toggle('on',engineChoice==='markdown');
   $('w-engine-llmwiki').classList.toggle('on',engineChoice==='llmwiki');
-  llmwikiSupported=data.llmwiki_supported;
-  llmwikiAsset=(data.assets||{}).llmwiki||null;
-  renderLlmwikiCard();
   showWizStep();
   const s=data.settings||{};
   const kbInput=$('w-kb-root');
@@ -1105,8 +1149,19 @@ function renderWizard(data){
   $('w4-hint').className='hint '+(loggedIn?'ok':'');
   $('w4-hint').textContent=loggedIn?'已登录 ✓':(active?'等待扫码…（请扫页面上的二维码）':'');
 }
+/* 第 3 步有两种形态：轻量引擎显示 xhs-wiki 自己的提供方/模型/Key 表单；
+   LLM Wiki 引擎换成"在 LLM Wiki 里选 + 检查结果 + 测试"面板。 */
+function syncStep3Mode(){
+  const wiki=engineChoice==='llmwiki';
+  $('w-llm-fields').classList.toggle('hidden',wiki);
+  $('w-llmwiki-panel').classList.toggle('hidden',!wiki);
+  $('w-save-llm').textContent=wiki?'重新检查':'保存模型设置';
+  /* 停在第 3 步且选择了 LLM Wiki 时，自动补一次检查结果（15 秒内不
+     重复取）；手动点「重新检查」总是立刻取。 */
+  if(wiki&&wizStep===3&&!llmwikiModelFetching
+     &&Date.now()-llmwikiModelAt>15000){refreshLlmwikiModel()}
+}
 function onProviderChange(){
-  filterWizardProviders();
   const p=$('w-provider').value;
   $('w-model-tip').textContent=MODEL_TIPS[p]||'';
   // Key 输入框只在 API 类提供方（anthropic / openai_compatible）显示；
@@ -1115,78 +1170,129 @@ function onProviderChange(){
   $('w-base-url-row').classList.toggle('hidden',p!=='openai_compatible');
   // 模型名预填建议值：只在用户没手动改过时才写，避免轮询冲掉用户输入。
   if(!modelTouched){$('w-model').value=MODEL_DEFAULTS[p]||''}
+  syncStep3Mode();
 }
-/* LLM Wiki 只支持命令行提供方；先保留合法选择，再替换可选节点。
-   API 选择失效时切到 Claude Code，同时清除旧模型名的“手动改过”标记。 */
-function filterWizardProviders(){
-  const select=$('w-provider'),previous=select.value;
-  const limited=engineChoice==='llmwiki';
-  const options=WIZ_PROVIDER_OPTIONS.filter(o=>!limited||['claude_code','codex'].includes(o.value));
-  select.replaceChildren(...options);
-  const allowed=options.some(o=>o.value===previous);
-  select.value=allowed?previous:'claude_code';
-  if(!allowed){modelTouched=false;providerTouched=true}
-  $('w-provider-engine-tip').classList.toggle('hidden',!limited);
+/* 第 2 步检查结果：按原因代码给出可照做的指引（N02 任务卡逐条列的
+   文案）。guidance 为 null 表示检查通过或还没检查。 */
+function llmwikiGuidance(reason){
+  if(!reason||reason==='ok')return null;
+  const kbPath=($('w-kb-root').value||'').trim();
+  if(reason==='llmwiki_app_missing'){
+    return '没找到 LLM Wiki。请到 github.com/nashsu/llm_wiki 的 Releases 下载 0.6.13 或更新版本的 .dmg 安装，装好后点「重新检查」。'
+  }
+  if(reason==='llmwiki_app_too_old'){
+    return '当前安装的 LLM Wiki 版本低于 0.6.13，请到它的设置或官网升级到 0.6.13 或更新版本，再点「重新检查」。'
+  }
+  if(reason==='llmwiki_project_invalid'){
+    const parent=kbPath?kbPath.replace(/\/[^/]*\/?$/,''):'（知识库位置的上级目录）';
+    const name=kbPath?kbPath.split('/').filter(Boolean).pop():'（文件夹名）';
+    return '知识库位置还不是 LLM Wiki 项目。请在 LLM Wiki 里新建项目，位置选 '+parent+'、名称填 '+name+'；或回到第 1 步，选一个已有的 LLM Wiki 项目文件夹。'
+  }
+  if(reason==='llmwiki_model_missing'){
+    return '整理用的模型还没配置：请按第 3 步的说明在 LLM Wiki 的设置 → LLM Models 里选择，再回来点「重新检查」。'
+  }
+  if(reason==='llmwiki_wrong_project'){
+    return 'LLM Wiki 当前打开的不是这个知识库，请在 LLM Wiki 里打开它，再点「重新检查」。'
+  }
+  return plainCode(reason);
 }
-/* 状态轮询只显示资源进度；用户选择过 LLM Wiki 且文件就绪后，才自动
-   检查一次后台。未知大小不编造 0 MB，失败后保留原因，等待用户点重试。 */
-function renderLlmwikiCard(){
-  const card=$('w-engine-llmwiki'),badge=$('w-engine-llmwiki-badge');
-  const unsupported=llmwikiSupported===false;
-  card.setAttribute('aria-disabled',String(unsupported));
-  card.tabIndex=unsupported?-1:0;
-  const a=llmwikiAsset||{},size=Number(a.total_bytes);
-  $('w-engine-llmwiki-size').textContent=size>0?'约 '+Math.ceil(size/1000000)+' MB 的后台程序':'后台程序（大小待确认）';
-  if(unsupported){badge.textContent=plainCode('llmwiki_unsupported_platform');return}
-  if(llmwikiChecking){badge.textContent='检测中…';return}
-  if(a.state==='failed'){
-    badge.textContent='下载失败：'+plainCode(a.error||'assets_error')+'；点一下重试';return
-  }
-  if(a.state==='downloading'||a.state==='pending'){
-    badge.textContent=a.progress==null?'下载中…':'下载中 '+Math.round(Math.max(0,Math.min(1,a.progress))*100)+'%';return
-  }
-  if(llmwikiHealthResult){
-    badge.textContent=llmwikiHealthResult.ok?'可用':'不可用：'+plainCode(llmwikiHealthResult.reason);return
-  }
-  if(a.state==='ready'){
-    badge.textContent='已下载，正在等待检查';
-    if(engineChoice==='llmwiki'&&(llmwikiRequested||!engineTouched)){checkLlmwikiEngine()}
-    else{badge.textContent='已下载，点一下检查'}
-    return
-  }
-  badge.textContent='点一下开始下载';
+/* 渲染第 2 步的检查结果框：通过显示绿字，不通过显示黄底指引，
+   「重新检查」按钮始终可用（检查进行中会由后端幂等处理）。 */
+function renderW2Check(){
+  const box=$('w2-check'),warn=$('w2-guidance'),pass=$('w2-passed');
+  box.classList.remove('hidden');
+  if(!llmwikiHealthResult){box.classList.add('hidden');return}
+  const text=llmwikiHealthResult.ok?null:llmwikiGuidance(llmwikiHealthResult.reason);
+  warn.classList.toggle('hidden',!text);
+  if(text)warn.textContent=text;
+  pass.classList.toggle('hidden',!llmwikiHealthResult.ok);
+  $('w2-recheck').textContent=llmwikiChecking?'检查中…':'重新检查';
 }
-/* 请求下载或健康检查共用同一接口。202 只是下载开始，不是引擎可用。
-   检查可能包含后台启动和关闭，超时留足时间；轮询不会发出重复检查。 */
+/* 健康检查（POST /api/setup/engine）：通过时服务端保存引擎选择。
+   检查只读文件系统，不启动应用、不花钱；超时留足时间。 */
 async function checkLlmwikiEngine(){
   if(llmwikiChecking)return null;
-  llmwikiChecking=true;llmwikiRequested=true;llmwikiHealthResult=null;
+  llmwikiChecking=true;llmwikiHealthResult=null;
   $('w2-hint').textContent='';
-  renderLlmwikiCard();
+  renderW2Check();
   const r=await post('/api/setup/engine',{engine:'llmwiki'},240000);
   llmwikiChecking=false;
-  if(r.status===202){llmwikiAsset=r.data.progress||{state:'downloading',progress:null}}
-  else{llmwikiHealthResult={ok:r.status===200,reason:r.data.reason||r.data.error||'engine_unavailable'}}
-  if(llmwikiHealthResult&&llmwikiHealthResult.reason==='llmwiki_agent_missing'){
-    $('w2-hint').textContent='可以先点「下一步」选择本机已安装的整理工具；检查通过后才会保存 LLM Wiki 引擎。'
-  }
-  renderLlmwikiCard();
+  llmwikiHealthResult={ok:r.status===200,
+    reason:(r.data&&r.data.reason)||(r.data&&r.data.error)||'engine_unavailable'};
+  renderW2Check();
   return r;
 }
-/* 选择卡片只更新向导草稿；健康成功时接口才会保存 LLM Wiki。切到轻量
-   引擎时同步告诉服务端释放按需下载状态，避免轻量用户被额外资源阻挡。 */
+/* 第 3 步检查结果（GET /api/setup/llmwiki-model，只读 app-state，
+   不含密钥内容）。wrong_project 为真时页面禁用「测试」。 */
+async function refreshLlmwikiModel(){
+  if(llmwikiModelFetching)return null;
+  llmwikiModelFetching=true;
+  let data=null;
+  try{
+    const response=await fetch('/api/setup/llmwiki-model',
+      {cache:'no-store',signal:AbortSignal.timeout(12000)});
+    if(response.ok){data=await response.json()}
+  }catch(error){data=null}
+  llmwikiModelFetching=false;
+  llmwikiModelAt=Date.now();
+  if(data){llmwikiModelInfo=data;renderLlmwikiModel()}
+  return data;
+}
+/* 把检查结果画进 #w-llmwiki-check：提供方、模型、密钥（是/否/不需要）、
+   未配置原因、项目不匹配提示、设置文件权限提示 + 收紧按钮。
+   全部用 textContent / createElement，绝不拼接 HTML。 */
+function renderLlmwikiModel(){
+  const box=$('w-llmwiki-check');box.replaceChildren();
+  const info=llmwikiModelInfo;
+  if(!info){box.append(el('div','还读不到 LLM Wiki 的检查结果，点「重新检查」再试','subtle'));return}
+  const row=(label,value,cls)=>{
+    const line=el('div',undefined,'needs');
+    line.append(el('div',label+'：'+value,'title'));
+    box.append(line);return line;
+  };
+  const model=info.model||{};
+  row('模型提供方',model.provider||'还没选择');
+  row('整理用模型（Ingest model）',model.model||'还没设置');
+  row('密钥',model.key_needed===false?'不需要（命令行或本机模型）':(model.has_key?'是':'否'));
+  /* 模型没配好：给出原因（对照表里 llmwiki_model_missing 的大白话）。 */
+  if(!model.provider||!model.model||model.has_key===false){
+    const warn=el('div',undefined,'needs');
+    warn.append(el('div',plainCode('llmwiki_model_missing'),'detail'));
+    box.append(warn);
+  }
+  if(info.wrong_project){
+    const warn=el('div',undefined,'needs');
+    warn.append(el('div','LLM Wiki 当前打开的不是这个知识库，请在 LLM Wiki 里打开它。「测试」按钮在此情况下不可用。','title'));
+    box.append(warn);
+  }
+  const perm=info.permission;
+  if(perm&&perm.loose){
+    const warn=el('div',undefined,'needs');
+    warn.append(el('div','LLM Wiki 把密钥以明文保存在设置文件里，这个文件目前本机其他账号也能读','detail'));
+    const btn=el('button','收紧为仅本人可读');
+    btn.addEventListener('click',async()=>{
+      btn.disabled=true;
+      const r=await post('/api/setup/llmwiki-tighten',{});
+      btn.disabled=false;
+      if(r.status===200){await refreshLlmwikiModel()}
+      else{btn.textContent='收紧失败：'+plainCode(r.data.error||r.status)}
+    });
+    warn.append(btn);
+    box.append(warn);
+  }
+}
+/* 选择卡片只更新向导草稿；健康检查通过时接口才会保存 LLM Wiki。 */
 async function pickEngine(name){
-  if(name==='llmwiki'&&llmwikiSupported===false)return;
   /* 健康检查会保存引擎；等这一次请求结束再允许切换，避免较慢的旧请求
-     最后覆盖用户刚选的轻量引擎。下载本身在 202 返回后不受此限制。 */
-  if(llmwikiChecking){wizHint('正在检查后台程序，请稍候');return}
+     最后覆盖用户刚选的另一个引擎。 */
+  if(llmwikiChecking){wizHint('正在检查 LLM Wiki，请稍候');return}
   engineTouched=true;
   engineChoice=name;
   $('w-engine-markdown').classList.toggle('on',name==='markdown');
   $('w-engine-llmwiki').classList.toggle('on',name==='llmwiki');
   onProviderChange();
   if(name==='llmwiki'){await checkLlmwikiEngine()}
-  else{llmwikiRequested=false;await post('/api/setup/engine',{engine:'markdown'})}
+  else{await post('/api/setup/engine',{engine:'markdown'})}
 }
 
 async function wizNext(){
@@ -1208,26 +1314,50 @@ async function wizNext(){
     wizHint([moved,skillNote].filter(Boolean).join('。'),Boolean(skillNote));
     wizStep=2;
   }else if(wizStep===2){
-    if(engineChoice==='llmwiki'&&llmwikiSupported===false){wizHint(plainCode('llmwiki_unsupported_platform'),true);return}
-    if(engineChoice==='llmwiki'&&llmwikiAsset&&['downloading','pending'].includes(llmwikiAsset.state)){
-      wizHint('后台程序还在下载');return
+    if(engineChoice==='llmwiki'&&llmwikiChecking){wizHint('正在检查 LLM Wiki，请稍候');return}
+    const r=engineChoice==='llmwiki'
+      ?(llmwikiHealthResult&&llmwikiHealthResult.ok
+          ?{status:200,data:{}}:await checkLlmwikiEngine())
+      :await post('/api/setup/engine',{engine:engineChoice});
+    if(r.status!==200){
+      const reason=(r.data&&r.data.reason)||(r.data&&r.data.error)||r.status;
+      /* 模型没配置不算第 2 步的拦路问题：放进第 3 步再处理
+         （引擎要等第 3 步补做健康检查通过后才保存）。 */
+      if(engineChoice==='llmwiki'&&reason==='llmwiki_model_missing'){
+        wizStep=3;wizHint('整理用的模型还没配好，请按第 3 步的说明在 LLM Wiki 里选择');showWizStep();return
+      }
+      wizHint(engineChoice==='llmwiki'?(llmwikiGuidance(reason)||'引擎检查未通过')
+        :'引擎保存失败：'+plainCode(reason),true);return
     }
-    if(engineChoice==='llmwiki'&&llmwikiChecking){wizHint('正在检查后台程序，请稍候');return}
-    const r=engineChoice==='llmwiki'?await checkLlmwikiEngine():await post('/api/setup/engine',{engine:engineChoice});
-    if(r.status===202){wizHint('后台程序还在下载');return}
-    /* 只装 Codex 的用户可能还保留默认 Claude 设置。仅缺少所选命令时
-       允许先选提供方，仍不保存引擎；第 3 步保存后必须补做健康检查。 */
-    if(engineChoice==='llmwiki'&&r.data.reason==='llmwiki_agent_missing'){
-      wizStep=3;wizHint('请先选择本机已安装的 Claude Code 或 Codex，再保存并检查');showWizStep();return
-    }
-    if(r.status!==200){wizHint('引擎保存失败：'+plainCode(r.data.reason||r.data.error||r.status),true);return}
     const engineSkillNote=skillResultNote(r.data.skill_results);
     if(engineSkillNote){wizHint(engineSkillNote,true)}
     wizStep=3;
   }else if(wizStep===3){
-    const saved=await saveLlm();
-    if(!saved){return}
-    wizStep=4;
+    if(engineChoice==='llmwiki'){
+      /* LLM Wiki 引擎：模型在 LLM Wiki 里选，这里不做 xhs-wiki 自己的
+         模型保存，只重做一次健康检查——第 2 步因模型未配置放行进来的，
+         引擎选择要等这次检查通过才真正保存。 */
+      const hint=$('w3-hint');
+      if(llmwikiChecking){hint.className='hint';hint.textContent='正在检查 LLM Wiki，请稍候';return}
+      hint.className='hint';hint.textContent='正在检查 LLM Wiki…';
+      const r=await checkLlmwikiEngine();
+      await refreshLlmwikiModel();
+      if(!r||r.status!==200){
+        const reason=(r&&r.data&&(r.data.reason||r.data.error))||'engine_unavailable';
+        hint.className='hint err';
+        hint.textContent='引擎检查未通过：'+(llmwikiGuidance(reason)||plainCode(reason));
+        return
+      }
+      const note=skillResultNote(r.data.skill_results);
+      hint.className=note?'hint err':'hint ok';
+      hint.textContent=note?('检查通过 ✓。'+note):'检查通过 ✓';
+      if(note)return;
+      wizStep=4;
+    }else{
+      const saved=await saveLlm();
+      if(!saved){return}
+      wizStep=4;
+    }
   }else if(wizStep===4){
     wizStep=5;
   }else if(wizStep===5){
@@ -1257,9 +1387,9 @@ async function wizNext(){
 }
 /* 保存模型设置；用 API 的提供方顺带保存 Key（密码框提交后立即清空）。 */
 async function saveLlm(){
+  /* 只在轻量引擎下会被调用（LLM Wiki 引擎的模型在应用里选，
+     走「重新检查」按钮的另一个处理函数）。 */
   const hint=$('w3-hint');
-  // 旧健康请求尚未结束时不能修改提供方，避免检查的模型与随后保存的不一致。
-  if(engineChoice==='llmwiki'&&llmwikiChecking){hint.textContent='正在检查后台程序，请稍候';return false}
   const provider=$('w-provider').value;
   let model=$('w-model').value.trim();
   if(provider==='codex'&&!model){model='default'}  // 留空 = Codex 默认模型
@@ -1272,18 +1402,6 @@ async function saveLlm(){
       const kr=await post('/api/setup/key',{provider,key});
       $('w-key').value='';  // 立即清空，Key 不留在页面里
       if(kr.status!==200){hint.className='hint err';hint.textContent='Key 保存失败：'+(kr.data.error||kr.status);return false}
-    }
-  }
-  /* LLM Wiki 草稿可能在第 2 步因缺少默认代理而未保存。先保存用户选的
-     工具，再检查后台；失败时留在本步，不能把轻量设置误当作完成。 */
-  if(engineChoice==='llmwiki'){
-    hint.className='hint';hint.textContent='正在检查 LLM Wiki 后台…';
-    const engineResult=await checkLlmwikiEngine();
-    if(!engineResult||engineResult.status!==200){
-      hint.className='hint err';
-      hint.textContent=engineResult&&engineResult.status===202?'后台程序还在下载':
-        '引擎检查未通过：'+plainCode(engineResult&&(engineResult.data.reason||engineResult.data.error)||'engine_unavailable');
-      return false
     }
   }
   hint.className='hint ok';hint.textContent='已保存 ✓';
@@ -1327,14 +1445,24 @@ $('engine-form').addEventListener('submit',async event=>{
   event.preventDefault();
   const hint=$('engine-hint');
   const engine=$('e-engine').value;
+  /* LLM Wiki 引擎：模型在 LLM Wiki 应用里选，这里只保存引擎选择，
+     不改 xhs-wiki 自己的提供方/模型设置。 */
+  if(engine==='llmwiki'){
+    const er=await post('/api/setup/engine',{engine:'llmwiki'},240000);
+    if(er.status!==200){
+      hint.className='hint err';
+      hint.textContent='引擎检查未通过：'+plainCode((er.data&&er.data.reason)||(er.data&&er.data.error)||er.status);
+    }else{
+      const note=skillResultNote(er.data.skill_results);
+      hint.className=note?'hint err':'hint ok';
+      hint.textContent='已保存。新设置只影响之后整理的内容'+(note?'。'+note:'');
+    }
+    refresh();return
+  }
   let model=$('e-model').value.trim();
   const provider=$('e-provider').value;
-  if(engine==='llmwiki'&&!['claude_code','codex'].includes(provider)){
-    hint.className='hint err';hint.textContent=plainCode('llmwiki_provider_unsupported');return
-  }
   if(provider==='codex'&&!model){model='default'}
-  /* LLM Wiki 不接受 API 提供方。用户切回轻量并选 API 时，必须先切引擎，
-     才能保存新提供方；否则会被旧引擎的组合校验挡住。 */
+  /* 用户从 LLM Wiki 切回轻量并选 API 提供方时，先切引擎再保存提供方。 */
   const switchedToMarkdown=engine==='markdown'&&last&&last.settings&&last.settings.engine==='llmwiki';
   if(switchedToMarkdown){
     const er=await post('/api/setup/engine',{engine:'markdown'},240000);
@@ -1343,9 +1471,7 @@ $('engine-form').addEventListener('submit',async event=>{
   const r=await post('/api/setup/llm',{provider,model,base_url:provider==='openai_compatible'?($('e-model').dataset.base_url||null):null});
   if(r.status===200){
     const er=switchedToMarkdown?{status:200,data:{}}:await post('/api/setup/engine',{engine},240000);
-    if(er.status===202){
-      hint.className='hint';hint.textContent='后台程序还在下载，请点「重新设置」查看进度并继续选择 LLM Wiki。';
-    }else if(er.status!==200){
+    if(er.status!==200){
       hint.className='hint err';hint.textContent='引擎保存失败：'+plainCode(er.data.reason||er.data.error||er.status);
     }else{
       const note=skillResultNote(er.data.skill_results);
@@ -1392,6 +1518,17 @@ $('restart-setup').addEventListener('click',async()=>{
 });
 /* 提供方切换时同步"换 Key 请点重新设置"的提示。 */
 $('e-provider').addEventListener('change',updateEngineKeyTip);
+/* 日常页「收紧为仅本人可读」：只改 LLM Wiki 设置文件的权限（后端
+   chmod 600），不改文件内容；成功后状态轮询会把提示收掉。 */
+$('e-llmwiki-tighten').addEventListener('click',async()=>{
+  const hint=$('e-llmwiki-perm-hint');
+  const btn=$('e-llmwiki-tighten');
+  btn.disabled=true;hint.className='hint';hint.textContent='收紧中…';
+  const r=await post('/api/setup/llmwiki-tighten',{});
+  btn.disabled=false;
+  if(r.status===200){hint.className='hint ok';hint.textContent='已收紧为仅本人可读 ✓';refresh()}
+  else{hint.className='hint err';hint.textContent='收紧失败：'+plainCode(r.data.error||r.status)}
+});
 
 /* 向导事件 */
 $('w-back').addEventListener('click',()=>{if(wizStep>1){wizStep-=1;showWizStep();wizHint('')}});
@@ -1404,10 +1541,54 @@ $('w-engine-llmwiki').addEventListener('click',()=>pickEngine('llmwiki'));
 $('w-engine-llmwiki').addEventListener('keydown',event=>{
   if(event.key==='Enter'||event.key===' '){event.preventDefault();pickEngine('llmwiki')}
 });
-$('w-save-llm').addEventListener('click',saveLlm);
-/* 测试按钮：API 类提供方会真实发一次最小请求，先弹确认框告知费用。 */
+/* 保存/重新检查按钮：轻量引擎保存 xhs-wiki 的模型设置；LLM Wiki 引擎
+   重做一次健康检查并刷新检查结果（模型本身在 LLM Wiki 里改）。 */
+$('w-save-llm').addEventListener('click',async()=>{
+  if(engineChoice!=='llmwiki'){saveLlm();return}
+  const hint=$('w3-hint');
+  if(llmwikiChecking){hint.className='hint';hint.textContent='正在检查 LLM Wiki，请稍候';return}
+  hint.className='hint';hint.textContent='正在检查…';
+  const r=await checkLlmwikiEngine();
+  await refreshLlmwikiModel();
+  if(r&&r.status===200){
+    const note=skillResultNote(r.data.skill_results);
+    hint.className=note?'hint err':'hint ok';
+    hint.textContent=note?('检查通过 ✓。'+note):'检查通过 ✓';
+  }else{
+    const reason=(r&&r.data&&(r.data.reason||r.data.error))||'engine_unavailable';
+    hint.className='hint err';
+    hint.textContent='检查未通过：'+(llmwikiGuidance(reason)||plainCode(reason));
+  }
+});
+/* 测试按钮：LLM Wiki 引擎放一条虚构示例笔记让应用真整理一遍（先确认
+   费用）；轻量引擎的 API 类提供方发一次最小请求（同样先确认费用）。 */
 $('w-test-llm').addEventListener('click',async()=>{
   const hint=$('w3-hint');
+  const saveBtn=$('w-save-llm'),testBtn=$('w-test-llm');
+  if(engineChoice==='llmwiki'){
+    /* 项目不匹配时后端也会拒绝；页面提前说明原因，按钮不可用。 */
+    if(llmwikiModelInfo&&llmwikiModelInfo.wrong_project){
+      hint.className='hint err';
+      hint.textContent='LLM Wiki 当前打开的不是这个知识库，不能测试：'+plainCode('llmwiki_wrong_project');return
+    }
+    if(!confirm('测试会通过 LLM Wiki 用你选的模型整理一条虚构示例笔记，会产生一次很小的模型调用费用。要继续吗？')){
+      hint.className='hint';hint.textContent='已取消测试';return
+    }
+    /* 服务端最多等 5 分钟（加一点余量），期间禁用按钮防止重复点击。 */
+    saveBtn.disabled=true;testBtn.disabled=true;
+    hint.className='hint';hint.textContent='测试中…（最长约 5 分钟；LLM Wiki 里会留下一个示例来源页，可以在 LLM Wiki 里删除）';
+    const r=await post('/api/setup/test-llmwiki',{confirm_cost:true},330000);
+    saveBtn.disabled=false;testBtn.disabled=false;
+    if(r.status===200&&r.data.ok){
+      hint.className='hint ok';
+      hint.textContent='整理测试通过 ✓ LLM Wiki 里会留下一个示例来源页，可以在 LLM Wiki 里删除';
+    }else{
+      hint.className='hint err';
+      hint.textContent='整理测试未通过：'+plainCode((r.data&&r.data.reason)||(r.data&&r.data.error)||r.status);
+    }
+    await refreshLlmwikiModel();
+    return
+  }
   const provider=$('w-provider').value;
   const saved=await saveLlm();
   if(!saved){return}
@@ -1420,13 +1601,17 @@ $('w-test-llm').addEventListener('click',async()=>{
   /* 测试最长可能等约 1 分钟（服务端检查登录态的超时是 60 秒），
      所以：请求用 90 秒超时（比服务端长，保证能拿到真正的原因）；
      等待期间禁用两个按钮，防止重复提交；提示文案说明要等多久。 */
-  const saveBtn=$('w-save-llm'),testBtn=$('w-test-llm');
   saveBtn.disabled=true;testBtn.disabled=true;
   hint.className='hint';hint.textContent='测试中…（最长约 1 分钟）';
   const r=await post('/api/setup/test-llm',body,90000);
   saveBtn.disabled=false;testBtn.disabled=false;
   if(r.status===200&&r.data.ok){hint.className='hint ok';hint.textContent='模型可用 ✓ '+plainCode(r.data.reason)}
   else{hint.className='hint err';hint.textContent='模型不可用：'+plainCode((r.data&&r.data.reason)||(r.data&&r.data.error)||r.status)}
+});
+/* 第 2 步的「重新检查」：重做一次健康检查。 */
+$('w2-recheck').addEventListener('click',async()=>{
+  if(llmwikiChecking)return;
+  await checkLlmwikiEngine();
 });
 $('w-qr-refresh').addEventListener('click',async()=>{await post('/api/login');refresh()});
 $('w-limit-20').addEventListener('click',()=>{

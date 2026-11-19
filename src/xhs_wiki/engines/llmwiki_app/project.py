@@ -203,17 +203,23 @@ def cache_entry_complete(kb_root: Path, entry, current_hash: str | None) -> bool
 def page_counts(kb_root: Path) -> dict:
     """数 nashsu 布局下的"主题数"和"来源数"，给控制台统计用。
 
-    口径：来源 = ``wiki/sources/`` 下的 .md 文件数；主题 = 五个主题
-    目录（concepts / entities / synthesis / comparisons / queries）
-    下的 .md 文件数之和——nashsu 没有"一个主题一页"的概念，页面
-    分散在这几个目录里，求和是最接近直觉的粗算。
+    口径（N02 任务卡）：来源 = ``wiki/sources/`` 下的 .md 文件数；主题 =
+    concepts / entities / synthesis / comparisons 四个目录下的 .md 文件数
+    之和。**问题页（wiki/queries/）不计入主题**——那是应用自动生成的
+    问答记录，不是知识主题页，混进统计会让"主题数"虚高。nashsu 没有
+    "一个主题一页"的概念，页面分散在这几个目录里，求和是最接近直觉
+    的粗算。
     """
 
     root = Path(kb_root)
     sources = len(list((root / WIKI_SOURCES_DIR).glob("*.md"))) \
         if (root / WIKI_SOURCES_DIR).is_dir() else 0
+    # 计数只认四个知识目录；queries 在 WIKI_TOPIC_DIRS 里（skill_context
+    # 与 distill 的 new_topics 粗算仍用它），这里排除掉。
+    count_dirs = [rel for rel in WIKI_TOPIC_DIRS
+                  if not rel.endswith("/queries")]
     topics = 0
-    for rel in WIKI_TOPIC_DIRS:
+    for rel in count_dirs:
         directory = root / rel
         if directory.is_dir():
             topics += len(list(directory.glob("*.md")))

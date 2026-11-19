@@ -63,7 +63,8 @@ class TestRender(unittest.TestCase):
 
     def test_render_llmwiki_engine_label(self):
         text = skill.render(fake_settings(engine="llmwiki"))
-        self.assertIn("LLM Wiki", text)
+        self.assertIn("LLM Wiki 引擎（也可以在 LLM Wiki 应用里查看和问答）",
+                      text)
 
     def test_render_has_no_domain_words(self):
         """description 和正文都不能列具体领域（docs/architecture.md §12）。"""
@@ -169,16 +170,24 @@ class TestRenderFollowsEngineLayout(unittest.TestCase):
     def test_llmwiki_paths_exist_in_scaffold(self):
         # nashsu/llm_wiki 的项目布局：索引、来源页、主题页都在 wiki/ 下
         #（知识库是用户在 LLM Wiki 里建的，这里只搭出同样的目录形状）。
-        for name in ("sources", "concepts", "entities"):
+        # N02 起 Skill 会列出全部主题目录（concepts/entities/synthesis/
+        # comparisons，不含 queries），脚手架把四个目录都建出来。
+        for name in ("sources", "concepts", "entities", "synthesis",
+                     "comparisons"):
             (self.kb / "wiki" / name).mkdir(parents=True, exist_ok=True)
         (self.kb / "wiki" / "index.md").write_text("x", encoding="utf-8")
         text = skill.render(fake_settings(kb_root=str(self.kb), engine="llmwiki"))
-        # 主题页目录指向 nashsu 布局的 wiki/concepts（概念页最常被查询）。
+        # 主题页目录指向 nashsu 布局的四个知识目录（概念页最常被查询）。
         self.assert_paths_exist(text, {
             self.kb / "wiki" / "index.md",
             self.kb / "wiki" / "concepts",
+            self.kb / "wiki" / "entities",
+            self.kb / "wiki" / "synthesis",
+            self.kb / "wiki" / "comparisons",
             self.kb / "wiki" / "sources",
         })
+        # 问题页目录不写进查询步骤（应用生成的问答记录，不是主题页）。
+        self.assertNotIn("wiki/queries", text)
         # 轻量引擎的目录名一个都不能出现在 LLM Wiki 用户的 Skill 里。
         for name in ("索引.md", "主题/", "来源/"):
             self.assertNotIn(name, text)

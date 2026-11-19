@@ -171,7 +171,9 @@ _TOOL_MARKERS = (
 # 引擎名 → 给用户看的说明（渲染进 SKILL.md 正文）。
 _ENGINE_LABELS = {
     "markdown": "轻量引擎（Markdown 文件夹，可用任意编辑器打开）",
-    "llmwiki": "LLM Wiki 引擎（在 LLM Wiki 桌面版里查看）",
+    # nashsu 版 LLM Wiki：知识库本身就是 LLM Wiki 的项目，应用里能直接
+    # 查看和问答（N02 任务卡的措辞）。
+    "llmwiki": "LLM Wiki 引擎（也可以在 LLM Wiki 应用里查看和问答）",
 }
 
 # 未完成首次设置时插进正文的提示段（不写死 127.0.0.1 地址——
@@ -198,13 +200,31 @@ def _engine_layout(settings: dict) -> dict:
     skill_context 用不到它；LLM Wiki 引擎建实例时只会确保 APP_HOME 下
     它自己的导入目录存在（没有就建），不碰知识库。
 
-    返回 skill_context() 的结果，这里用到其中三个键：index、topics_dir、
-    sources_dir，都是相对知识库根目录的写法（例如 "wiki/index.md"）。
+    返回 skill_context() 的结果，这里用到其中四个键：index、topics_dir、
+    sources_dir、topic_dirs（全部主题目录，llmwiki 引擎才有），都是相对
+    知识库根目录的写法（例如 "wiki/index.md"）。
     """
     from . import config
     from .engines import make_engine
 
     return make_engine(settings, None, config.app_home()).skill_context()
+
+
+def _topics_description(layout: dict) -> str:
+    """查询步骤第 2 步里"主题页在哪个目录"的说明文字。
+
+    做什么：把 skill_context() 给的目录列表拼成一句给人看的话——
+    LLM Wiki（nashsu）的主题页分散在 wiki/concepts、entities、synthesis、
+    comparisons 几个目录里（queries 是应用生成的问答记录页，查询时不用
+    读，不列出来）；轻量引擎只有一个"主题/"目录。
+    为什么从 skill_context 拿：目录口径的唯一权威是引擎本身（N01 的
+    skill_context()），这里另记一份就会和引擎对不上。
+    """
+    dirs = [d for d in (layout.get("topic_dirs") or [])
+            if not str(d).endswith("queries")]
+    if dirs:
+        return "、".join(f"`{d}/`" for d in dirs) + " 目录"
+    return f"`{layout['topics_dir']}/` 目录"
 
 
 def render(settings: dict) -> str:
@@ -237,6 +257,7 @@ def render(settings: dict) -> str:
     # 文字，路径里万一出现"{{INDEX}}"这类字样，也不会被当成占位符改掉。
     return (template
             .replace("{{INDEX}}", layout["index"])
+            .replace("{{TOPICS_DESC}}", _topics_description(layout))
             .replace("{{TOPICS_DIR}}", layout["topics_dir"])
             .replace("{{SOURCES_DIR}}", layout["sources_dir"])
             .replace("{{ENGINE_LABEL}}", engine_label)

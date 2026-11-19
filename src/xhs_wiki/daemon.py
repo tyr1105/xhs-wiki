@@ -471,6 +471,8 @@ POST_ROUTES = (
     "/api/setup/llm",
     "/api/setup/key",
     "/api/setup/test-llm",
+    "/api/setup/test-llmwiki",
+    "/api/setup/llmwiki-tighten",
     "/api/setup/first-import",
     "/api/setup/finish",
     "/api/setup/restart",
@@ -1614,6 +1616,9 @@ class ServiceHandler(BaseHTTPRequestHandler):
                             "text/html; charset=utf-8")
         elif route == "/api/status":
             self._send_json(200, build_status(self.server))
+        elif route == "/api/setup/llmwiki-model":
+            # 向导第 3 步的检查结果（只读 app-state，不启动应用）。
+            self._get_setup_llmwiki_model()
         elif route == "/api/login-qr.png":
             qr_path = self.server.supervisor.store.root / "login-qr.png"
             if self.server.supervisor.login_active() and qr_path.exists():
@@ -1839,6 +1844,12 @@ class ServiceHandler(BaseHTTPRequestHandler):
 
         elif route == "/api/setup/test-llm":
             self._post_setup_test_llm(body)
+
+        elif route == "/api/setup/test-llmwiki":
+            self._post_setup_test_llmwiki(body)
+
+        elif route == "/api/setup/llmwiki-tighten":
+            self._post_setup_llmwiki_tighten()
 
         elif route == "/api/setup/first-import":
             self._post_setup_first_import(body)
@@ -2088,6 +2099,135 @@ class ServiceHandler(BaseHTTPRequestHandler):
             return
         self._send_json(200, {"ok": bool(ok), "reason": str(reason)})
 
+    # ---------------- LLM Wiki 引擎的三个接口（N02） ----------------
+
+    def _make_llmwiki_engine(self, settings: dict):
+        """构造 LLM Wiki 引擎实例；不是 llmwiki 引擎或构造失败时响应错误。
+
+        返回 None 表示已经把错误响应发出去，调用方直接 return。
+        """
+        if settings.get("engine") != "llmwiki":
+            self._send_json(400, {"error": "engine_invalid"})
+            return None
+        try:
+            engine = self.server.make_engine(settings)
+        except ValueError as error:
+            self._send_json(400, {"error": "engine_unavailable",
+                                  "reason": str(error)})
+            return None
+        return engine
+
+    def _get_setup_llmwiki_model(self):
+        """GET /api/setup/llmwiki-model：向导第 3 步的检查结果（只读）。
+
+        返回 {"ok": true, "model": llmwiki_model_summary 的结果或 null,
+        "wrong_project": bool, "permission": 权限摘要或 null}。
+        只读 app-state.json 和文件 stat，不启动应用、不花钱；密钥只判断
+        有没有，绝不回显内容。wrong_project 为 True 时页面禁用「测试」。
+        """
+        settings = self.server.supervisor.store.load_settings()
+        engine = self._make_llmwiki_engine(settings)
+        if engine is None:
+            return
+        controller = getattr(engine, "app", None)
+        state = controller.read_state() if controller is not None else None
+        self._send_json(200, {
+            "ok": True,
+            "model": llmwiki_model_summary(state),
+            "wrong_project": llmwiki_wrong_project(engine,
+                                                   settings["kb_root"]),
+            "permission": llmwiki_state_permission(engine),
+        })
+
+    def _post_setup_llmwiki_tighten(self):
+        """POST /api/setup/llmwiki-tighten：把 app-state.json 权限收紧为 600。
+
+        LLM Wiki 把密钥明文存在这个文件里；权限比 600 宽时页面提示并给出
+        这个按钮。只 chmod 这一个文件，绝不改文件内容，也不碰其他文件。
+        """
+        settings = self.server.supervisor.store.load_settings()
+        engine = self._make_llmwiki_engine(settings)
+        if engine is None:
+            return
+        controller = getattr(engine, "app", None)
+        path = getattr(controller, "state_path", None)
+        if not path or not Path(path).exists():
+            self._send_json(400, {"error": "llmwiki_state_missing"})
+            return
+        try:
+            Path(path).chmod(0o600)
+        except OSError:
+            # 只报错误代码，不带路径或系统错误原文。
+            self._send_json(400, {"error": "llmwiki_chmod_failed"})
+            return
+        self._send_json(200, {"ok": True})
+
+    def _post_setup_test_llmwiki(self, body: dict):
+        """POST /api/setup/test-llmwiki：用一条虚构示例笔记试一次真实整理。
+
+        做什么（任务卡 N02）：
+        1. 要求请求体带 {"confirm_cost": true}（页面先向用户确认会产生
+           一次很小的模型调用费用）；
+        2. 调引擎的 prepare()：应用没运行就后台启动，并确认当前打开的
+           就是这个知识库（不是则拒绝，绝不往别的项目写文件）；
+        3. 把固定虚构内容写到 raw/sources/xhs/xhs-wiki-selftest.md
+           （原子写，和正常入库同一条路径）；
+        4. 按引擎的 distill 规则等最多 5 分钟（timeout_s=300）；
+        5. 无论结果如何都删除示例来源文件；LLM Wiki 已生成的页面**不删**
+           （页面上说明可在 LLM Wiki 里删除）。
+
+        返回 {"ok": bool, "reason": 原因代码}；原因代码都进了页面的大
+        白话对照表（llmwiki_selftest_timeout 表示 5 分钟内没整理完）。
+        """
+        from .engines.llmwiki_app import project as llmwiki_project
+        from .engines.llmwiki_app.engine import EngineNeedsUser
+        if body.get("confirm_cost") is not True:
+            self._send_json(400, {"error": "cost_confirmation_required"})
+            return
+        settings = self.server.supervisor.store.load_settings()
+        engine = self._make_llmwiki_engine(settings)
+        if engine is None:
+            return
+        try:
+            engine.prepare()
+        except EngineNeedsUser as error:
+            self._send_json(400, {"ok": False, "reason": error.code})
+            return
+        except (ValueError, OSError):
+            self._send_json(400, {"ok": False,
+                                  "reason": "llmwiki_app_missing"})
+            return
+        source = Path(settings["kb_root"]).expanduser() \
+            / llmwiki_project.SOURCES_DIR_REL \
+            / f"{LLMWIKI_SELFTEST_NOTE_ID}.md"
+        try:
+            llmwiki_project.write_source_atomic(source,
+                                                LLMWIKI_SELFTEST_CONTENT)
+        except OSError:
+            self._send_json(400, {"ok": False, "reason": "package_write_failed"})
+            return
+        try:
+            result = engine.distill([LLMWIKI_SELFTEST_NOTE_ID], timeout_s=300)
+            note = (result.per_note or {}).get(LLMWIKI_SELFTEST_NOTE_ID)
+        except Exception:
+            note = None
+        finally:
+            # 示例来源文件一定删除；LLM Wiki 生成的页面保留。
+            try:
+                source.unlink(missing_ok=True)
+            except OSError:
+                pass
+        if not note:
+            self._send_json(200, {"ok": False,
+                                  "reason": "llmwiki_selftest_timeout"})
+            return
+        if note.get("status") == "ok":
+            self._send_json(200, {"ok": True, "reason": "ok"})
+        else:
+            self._send_json(200, {"ok": False,
+                                  "reason": note.get("code")
+                                  or "llmwiki_ingest_failed"})
+
     def _post_setup_first_import(self, body: dict):
         """首次导入范围：{"limit": 20|null}。
 
@@ -2237,6 +2377,148 @@ def _safe_disk_usage(disk_usage_fn, path):
 
 
 # ---------------------------------------------------------------------------
+# LLM Wiki（nashsu）相关的只读辅助与示例笔记（N02）
+# ---------------------------------------------------------------------------
+
+# 内置提供方编号 → 给用户看的名字（上游 0.6.13 的 llm-presets.ts 里定义
+# 的编号；custom- 开头的是用户在 LLM Wiki 里自己添加的自定义提供方）。
+# 只用于第 3 步检查结果的显示，判定逻辑仍在引擎的 AppController 里。
+LLMWIKI_PRESET_NAMES = {
+    "anthropic": "Anthropic (Claude)",
+    "openai": "OpenAI",
+    "claude-code-cli": "Claude Code",
+    "codex-cli": "Codex",
+    "ollama-local": "Ollama",
+}
+
+# 「测试」按钮放进知识库的虚构示例笔记（红线：固定虚构内容，不出现
+# 任何真实笔记的编号、作者或链接）。文件名和笔记编号固定，方便结束后
+# 删除；整理出来的页面留在 LLM Wiki 里（页面上会说明），绝不代删。
+LLMWIKI_SELFTEST_NOTE_ID = "xhs-wiki-selftest"
+LLMWIKI_SELFTEST_CONTENT = (
+    "---\n"
+    'title: "xhs-wiki 测试笔记（虚构内容，可以删除）"\n'
+    'author: "xhs-wiki 自检"\n'
+    'url: ""\n'
+    'note_id: "xhs-wiki-selftest"\n'
+    'source: "xhs-wiki 自检（测试用虚构笔记，与任何真实收藏无关）"\n'
+    "---\n\n"
+    "# xhs-wiki 测试笔记\n\n"
+    "这是一条由 xhs-wiki 的「测试」按钮生成的虚构笔记，用来确认 LLM Wiki "
+    "能用你选的模型完成整理。它不包含任何真实内容：测试结束后来源文件会被"
+    "自动删除；整理生成的一个示例来源页会留在 LLM Wiki 里，可以在 LLM Wiki "
+    "中删除它。\n"
+)
+
+
+def llmwiki_model_summary(state) -> dict | None:
+    """从 app-state（只读 dict）整理出向导第 3 步要显示的模型信息。
+
+    返回 {"provider": 提供方名称或 None, "model": 模型名或 None,
+    "has_key": 是否已满足密钥要求（不需要密钥的提供方恒为 True）,
+    "key_needed": 这种提供方是否需要密钥}；state 读不出（None）时
+    返回 None，页面显示「读不到 LLM Wiki 的设置」。
+
+    红线：只判断 apiKey 是否为空，绝不把它的值放进返回值或日志。
+    密钥是否"必要"的口径与引擎 AppController.ingest_provider_ok 保持
+    一致（命令行 / 本机服务不需要密钥），这里只复用同一批常量做显示。
+    """
+    from .engines.llmwiki_app import app as llmwiki_app_module
+    if not isinstance(state, dict):
+        return None
+    routing = state.get("taskModelRouting")
+    preset_id = (routing.get("ingestPresetId")
+                 if isinstance(routing, dict) else None)
+    if not preset_id:
+        preset_id = state.get("activePresetId")
+    if not preset_id:
+        return {"provider": None, "model": None,
+                "has_key": False, "key_needed": True}
+    preset_id = str(preset_id)
+    configs = state.get("providerConfigs")
+    preset = configs.get(preset_id) if isinstance(configs, dict) else None
+    preset = preset if isinstance(preset, dict) else {}
+    # 提供方名称：内置编号查表；custom 开头叫「自定义提供方」；其余原样。
+    if preset_id in LLMWIKI_PRESET_NAMES:
+        provider = LLMWIKI_PRESET_NAMES[preset_id]
+    elif preset_id == "custom" or preset_id.startswith("custom-"):
+        provider = "自定义提供方"
+    else:
+        provider = preset_id
+    model = preset.get("model")
+    # 是否需要密钥：口径与 AppController.ingest_provider_ok 相同
+    # （内置无密钥预设、条目里的类型字段、指向本机的自定义地址）。
+    kind = preset.get("apiMode") or preset.get("provider")
+    key_needed = not (
+        preset_id in llmwiki_app_module.NO_KEY_PRESET_IDS
+        or (isinstance(kind, str)
+            and kind.strip().lower() in llmwiki_app_module.NO_KEY_KINDS)
+        or ((preset_id == "custom" or preset_id.startswith("custom-"))
+            and llmwiki_app_module._is_local_base_url(preset.get("baseUrl"))))
+    key = preset.get("apiKey")
+    has_key = (not key_needed) or (isinstance(key, str) and bool(key.strip()))
+    return {"provider": provider,
+            "model": str(model) if model else None,
+            "has_key": bool(has_key),
+            "key_needed": bool(key_needed)}
+
+
+def llmwiki_state_permission(engine) -> dict | None:
+    """LLM Wiki 设置文件（app-state.json）的权限摘要；判断不了返回 None。
+
+    loose 为 True 表示权限比 600 宽（组用户或其他人有读/写位）——LLM Wiki
+    把密钥明文存在这个文件里，权限过宽意味着本机其他账号也能读到。
+    只 stat，不读内容。
+    """
+    controller = getattr(engine, "app", None)
+    path = getattr(controller, "state_path", None)
+    if not path:
+        return None
+    try:
+        mode = Path(path).stat().st_mode & 0o777
+    except OSError:
+        return None
+    return {"path": str(path), "mode": format(mode, "03o"),
+            "loose": bool(mode & 0o077)}
+
+
+def llmwiki_wrong_project(engine, kb_root) -> bool:
+    """LLM Wiki 当前打开的是不是这个知识库（只读判断，不启动应用）。
+
+    口径与引擎 prepare() 一致：读不到当前项目也算"不是"（页面据此
+    禁用测试按钮并提示在 LLM Wiki 里打开知识库）。
+    """
+    controller = getattr(engine, "app", None)
+    if controller is None:
+        return False  # 判断不了（假引擎等），按不提示处理
+    current, _name = controller.last_project()
+    if not current:
+        return True
+    try:
+        return (Path(current).expanduser().resolve()
+                != Path(kb_root).expanduser().resolve())
+    except (OSError, RuntimeError):
+        return True
+
+
+def llmwiki_review_pending(kb_root) -> int | None:
+    """读 .llm-wiki/review.json 里 resolved 为 false 的条数。
+
+    读失败 / 格式不认识返回 None：控制台这一项不显示也不报错
+    （待审核是提示信息，不能因为它拖垮整个状态接口）。
+    """
+    path = Path(kb_root).expanduser() / ".llm-wiki" / "review.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, list):
+        return None
+    return sum(1 for item in data
+               if isinstance(item, dict) and not item.get("resolved"))
+
+
+# ---------------------------------------------------------------------------
 # /api/status 的组装
 # ---------------------------------------------------------------------------
 
@@ -2299,6 +2581,23 @@ def build_status(server: ServiceServer) -> dict:
     # 步骤代码 → 中文（runner 集中定义，控制台直接复用）。
     from .runner import STEP_LABELS
 
+    # LLM Wiki 引擎的附加状态（第 3 步之外、日常页"体检"也要看）：
+    # - 设置文件权限过宽时提示可收紧（密钥明文存储，见 PRD 6.2）；
+    # - 待审核条数（review.json 里 resolved 为 false 的条目），读不出来
+    #   就不给这个键——页面那一项不显示也不报错。
+    # - 错误页数不在这里统计（记录文件读不出时按"无法判断"处理）。
+    llmwiki_state = None
+    kb_extra = {}
+    if settings.get("engine") == "llmwiki":
+        try:
+            engine_obj = server.make_engine(settings)
+        except Exception:
+            engine_obj = None
+        llmwiki_state = llmwiki_state_permission(engine_obj)
+        pending = llmwiki_review_pending(settings["kb_root"])
+        if pending is not None:
+            kb_extra["review_pending"] = pending
+
     return {
         "status": store.read_status(),
         "settings": settings,
@@ -2318,7 +2617,9 @@ def build_status(server: ServiceServer) -> dict:
         "paused": store.pause_requested(),
         # ---------------- 台账、知识库、首次设置与模型 ----------------
         "counts": counts,
-        "kb": server.cached_kb_stats(settings["kb_root"], counts, engine=settings.get("engine")),
+        "kb": {**server.cached_kb_stats(settings["kb_root"], counts,
+                                        engine=settings.get("engine")),
+               **kb_extra},
         "failed_notes": failed_notes,
         "setup_completed": bool(settings.get("setup_completed")),
         "llm": {
@@ -2328,6 +2629,8 @@ def build_status(server: ServiceServer) -> dict:
             "key_saved": key_saved,
         },
         "engine": settings.get("engine"),
+        # LLM Wiki 引擎：设置文件权限摘要（markdown 引擎不给这个键）。
+        "llmwiki_state": llmwiki_state,
         "cleanup_total_bytes": scheduler.get("cleanup_freed_bytes_total", 0),
     }
 
