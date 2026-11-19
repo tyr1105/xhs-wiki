@@ -253,6 +253,78 @@ class TestHealth:
         assert engine.health() == (False, "llmwiki_model_missing")
 
 
+class TestIngestProviderOk:
+    """N01a：按预设编号 / 条目类型 / 自定义本机地址判断是否需要密钥。
+
+    直接测 ingest_provider_ok，数据全部虚构，不出现真实密钥。
+    """
+
+    def _controller(self, tmp_path, state):
+        app = FakeApp(tmp_path / "app-state.json", running=True)
+        if state is not None:
+            write_state(app.state_path, state)
+        return app
+
+    @pytest.mark.parametrize("preset_id",
+                             ["claude-code-cli", "codex-cli", "ollama-local"])
+    def test_builtin_no_key_preset_without_entry(self, tmp_path, preset_id):
+        """刚启用的内置无密钥预设：providerConfigs 里没有条目也算可用。"""
+        app = self._controller(tmp_path, valid_state(
+            activePresetId=preset_id,
+            taskModelRouting={"ingestPresetId": preset_id},
+            providerConfigs={}))
+        assert app.ingest_provider_ok() is True
+
+    @pytest.mark.parametrize("preset_id",
+                             ["claude-code-cli", "codex-cli", "ollama-local"])
+    def test_builtin_no_key_preset_with_entry(self, tmp_path, preset_id):
+        """有条目但条目里只有 model（内置条目不带 provider 字段）。"""
+        app = self._controller(tmp_path, valid_state(
+            taskModelRouting={"ingestPresetId": preset_id},
+            providerConfigs={preset_id: {"model": "fake-model"}}))
+        assert app.ingest_provider_ok() is True
+
+    @pytest.mark.parametrize("base_url", [
+        "http://localhost:11434",
+        "http://127.0.0.1:11434",
+        "http://[::1]:11434",
+    ])
+    def test_custom_local_base_url_needs_no_key(self, tmp_path, base_url):
+        """自定义提供方指到本机：不需要密钥。"""
+        app = self._controller(tmp_path, valid_state(
+            taskModelRouting={"ingestPresetId": "custom-1"},
+            providerConfigs={"custom-1": {
+                "apiMode": "openai_compatible",
+                "baseUrl": base_url, "apiKey": "", "model": "fake-model"}}))
+        assert app.ingest_provider_ok() is True
+
+    def test_custom_remote_base_url_without_key_not_ok(self, tmp_path):
+        """自定义提供方指到远程且没有密钥：不可用。"""
+        app = self._controller(tmp_path, valid_state(
+            taskModelRouting={"ingestPresetId": "custom-1"},
+            providerConfigs={"custom-1": {
+                "apiMode": "openai_compatible",
+                "baseUrl": "https://api.example.test/v1",
+                "apiKey": "", "model": "fake-model"}}))
+        assert app.ingest_provider_ok() is False
+
+    def test_builtin_anthropic_with_key_ok(self, tmp_path):
+        """内置 anthropic 条目（只有 apiKey / model）：有密钥可用。"""
+        app = self._controller(tmp_path, valid_state(
+            taskModelRouting={"ingestPresetId": "anthropic"},
+            providerConfigs={"anthropic": {
+                "apiKey": "synthetic-key", "model": "fake-model"}}))
+        assert app.ingest_provider_ok() is True
+
+    def test_builtin_anthropic_without_key_not_ok(self, tmp_path):
+        """内置 anthropic 没有密钥：不可用。"""
+        app = self._controller(tmp_path, valid_state(
+            taskModelRouting={"ingestPresetId": "anthropic"},
+            providerConfigs={"anthropic": {
+                "apiKey": "", "model": "fake-model"}}))
+        assert app.ingest_provider_ok() is False
+
+
 # ---------------------------------------------------------------------------
 # ingest
 # ---------------------------------------------------------------------------

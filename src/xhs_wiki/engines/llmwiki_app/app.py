@@ -47,6 +47,19 @@ DEFAULT_STATE_PATH = (Path.home() / "Library" / "Application Support"
 # 字段读不出来时按"需要密钥而没有"处理（任务卡的约定：读不出当缺失）。
 NO_KEY_KINDS = frozenset({"claude-code", "codex-cli", "ollama"})
 
+# 不需要 API 密钥的内置预设编号（上游 0.6.13 的 src/components/settings/
+# llm-presets.ts）：claude-code-cli → claude-code；codex-cli → codex-cli；
+# ollama-local → ollama。
+# 为什么单独列编号：providerConfigs 只保存用户改过的字段，刚启用、什么
+# 都没改的内置提供方在 providerConfigs 里**没有条目**（也没有 provider
+# 字段），只能按预设编号判断类型（任务卡 N01a）。
+NO_KEY_PRESET_IDS = frozenset({"claude-code-cli", "codex-cli", "ollama-local"})
+
+# 视为"本机"的主机名：自定义提供方指到这些地址时，是用户自己电脑上的
+# 模型服务（如 Ollama、LM Studio），不需要密钥——和 LLM Wiki 界面里
+# 自定义提供方"无 Key 可留空"的行为一致。
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
 
 def find_bundle(app_dirs=None) -> Path | None:
     """找应用包：/Applications 和 ~/Applications 里找 LLM Wiki.app。
@@ -90,6 +103,27 @@ def version_text(version) -> str:
     """版本元组转成给人看的字符串（读不出返回 "未知"）。"""
 
     return ".".join(str(part) for part in version) if version else "未知"
+
+
+def _is_local_base_url(base_url) -> bool:
+    """自定义提供方的 baseUrl 是否指向本机。
+
+    做什么：解析 URL 取主机名，判断是不是 localhost / 127.0.0.1 / ::1。
+    为什么这样做：本机模型服务（如 Ollama）不需要密钥，LLM Wiki 界面
+    里也允许这些地址留空 Key；解析不了的地址按"不是本机"处理，
+    保守地要求密钥。IPv6 的 [::1] 写法要去掉方括号再比。
+    """
+
+    if not isinstance(base_url, str) or not base_url.strip():
+        return False
+    from urllib.parse import urlsplit
+    try:
+        host = urlsplit(base_url.strip()).hostname
+    except ValueError:
+        return False
+    if not host:
+        return False
+    return host.strip("[]").lower() in LOCAL_HOSTS
 
 
 class AppController:
@@ -162,12 +196,18 @@ class AppController:
     def ingest_provider_ok(self, state=None) -> bool:
         """整理用的提供方是否已配置且可用（不花钱、不碰密钥内容）。
 
-        规则（任务卡）：``taskModelRouting.ingestPresetId``（为空用
-        ``activePresetId``）必须能在 ``providerConfigs`` 里找到；找不到、
-        状态文件读不了，或该提供方需要密钥而 apiKey 为空 → 不可用。
-        命令行类（claude-code / codex-cli）和本机 ollama 不需要密钥。
-        判断依据是提供方配置的 ``provider`` / ``apiMode`` 字段，两个字段
-        都读不出时按"需要密钥而没有"处理。
+        判定顺序（任务卡 N01a）：
+        1. 选中的预设编号本身是无密钥内置预设（claude-code-cli /
+           codex-cli / ollama-local）→ 可用。**不要求 providerConfigs
+           里有条目**——用户刚启用、什么都没改时根本没有条目；
+        2. 条目里的 provider / apiMode 字段属于 NO_KEY_KINDS → 可用
+           （兼容将来条目里带类型的情况）；
+        3. 自定义提供方（编号以 custom- 开头或等于 custom）的 baseUrl
+           主机是本机（localhost / 127.0.0.1 / ::1）→ 可用，不要求密钥；
+        4. 其余情况：providerConfigs 里必须有条目且 apiKey 非空才可用。
+
+        预设编号取 ``taskModelRouting.ingestPresetId``（为空用
+        ``activePresetId``）；没有编号、状态文件读不了 → 不可用。
         """
 
         if state is None:
@@ -181,13 +221,22 @@ class AppController:
             preset_id = state.get("activePresetId")
         if not preset_id:
             return False
+        preset_id = str(preset_id)
+        # 1) 按预设编号：内置的无密钥预设，没有条目也算可用。
+        if preset_id in NO_KEY_PRESET_IDS:
+            return True
         configs = state.get("providerConfigs")
         preset = configs.get(preset_id) if isinstance(configs, dict) else None
         if not isinstance(preset, dict):
             return False
+        # 2) 按条目里的类型字段（provider / apiMode 两种写法）。
         kind = preset.get("apiMode") or preset.get("provider")
         if isinstance(kind, str) and kind.strip().lower() in NO_KEY_KINDS:
             return True
-        # 其余类型（Anthropic / OpenAI 兼容等）都要有密钥：只判断有没有。
+        # 3) 自定义提供方指到本机地址：本机模型服务，不需要密钥。
+        if preset_id == "custom" or preset_id.startswith("custom-"):
+            if _is_local_base_url(preset.get("baseUrl")):
+                return True
+        # 4) 其余类型（Anthropic / OpenAI 兼容等）都要有密钥：只判断有没有。
         key = preset.get("apiKey")
         return isinstance(key, str) and bool(key.strip())
