@@ -270,21 +270,27 @@ def _cmd_doctor(args, deps_factory=None) -> int:
 
     # 6. 整理模型登录状态：claude_code/codex 查登录（不花钱）；
     #    anthropic/openai_compatible 只查钥匙串里有没有 Key。
-    try:
-        deps = deps_factory()
-        provider_name = settings["llm"]["provider"]
+    #    LLM Wiki 引擎（nashsu 版）例外：整理用的模型由 LLM Wiki 应用
+    #    自己调用，xhs-wiki 的 settings["llm"] 用不到，这里不显示这项
+    #    检查（会误报）；新引擎自己的模型检查在下方 llmwiki_model
+    #    一项里，已覆盖同样的信息。
+    if settings["engine"] != "llmwiki":
         try:
-            provider = deps.make_provider(settings)
-            if provider_name in ("claude_code", "codex"):
-                ok, reason = provider.check()
-                _check(f"整理模型（{provider_name}）", ok, reason)
-            else:
-                _check(f"整理模型（{provider_name} 的 Key）",
-                       deps.key_exists(provider_name), "钥匙串条目")
+            deps = deps_factory()
+            provider_name = settings["llm"]["provider"]
+            try:
+                provider = deps.make_provider(settings)
+                if provider_name in ("claude_code", "codex"):
+                    ok, reason = provider.check()
+                    _check(f"整理模型（{provider_name}）", ok, reason)
+                else:
+                    _check(f"整理模型（{provider_name} 的 Key）",
+                           deps.key_exists(provider_name), "钥匙串条目")
+            except Exception as error:
+                _check(f"整理模型（{provider_name}）", False,
+                       type(error).__name__)
         except Exception as error:
-            _check(f"整理模型（{provider_name}）", False, type(error).__name__)
-    except Exception as error:
-        _check("整理模型", False, type(error).__name__)
+            _check("整理模型", False, type(error).__name__)
 
     # LLM Wiki 引擎（nashsu/llm_wiki 桌面应用）：逐项显示新 health 的
     # 检查（应用、版本、项目结构、整理模型），外加一项设置文件权限

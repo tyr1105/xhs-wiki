@@ -447,22 +447,28 @@ def _run_locked(trigger, deps, run_id, started):
         # 整理模型：CLI 类（claude_code / codex）调 provider.check() 只查
         # 登录状态不花钱；API 类（anthropic / openai_compatible）不发请求，
         # 只查钥匙串里有没有 Key。
-        provider_name = settings["llm"]["provider"]
-        try:
-            provider = deps.make_provider(settings)
-            if provider_name in ("claude_code", "codex"):
-                ok, reason = provider.check()
-                if not ok:
-                    needs_user("llm_unavailable", _truncate(reason, 200))
-            else:
-                if not deps.key_exists(provider_name):
-                    needs_user("llm_unavailable",
-                               "钥匙串里没有该提供方的 API Key")
-        except LLMError as error:
-            # 预检阶段模型就不可用：直接交给用户处理（熔断逻辑只用于处理
-            # 阶段——预检都没过，这一轮本来就不会开始调模型）。
-            needs_user("llm_unavailable",
-                       _truncate(getattr(error, "code", ""), 200))
+        # LLM Wiki 引擎（nashsu 版）例外：整理用的模型由 LLM Wiki 应用自己
+        # 调用，xhs-wiki 的 settings["llm"] 完全用不到——即使这里的默认
+        # claude_code 未登录、API 类没有 Key，也不影响整理。这里完全跳过
+        # （make_provider / check() / key_exists 都不调用），新引擎的模型
+        # 检查由下方 engine.health() 的 llmwiki_model 一项负责。
+        if settings["engine"] != "llmwiki":
+            provider_name = settings["llm"]["provider"]
+            try:
+                provider = deps.make_provider(settings)
+                if provider_name in ("claude_code", "codex"):
+                    ok, reason = provider.check()
+                    if not ok:
+                        needs_user("llm_unavailable", _truncate(reason, 200))
+                else:
+                    if not deps.key_exists(provider_name):
+                        needs_user("llm_unavailable",
+                                   "钥匙串里没有该提供方的 API Key")
+            except LLMError as error:
+                # 预检阶段模型就不可用：直接交给用户处理（熔断逻辑只用于
+                # 处理阶段——预检都没过，这一轮本来就不会开始调模型）。
+                needs_user("llm_unavailable",
+                           _truncate(getattr(error, "code", ""), 200))
         # 引擎：health() 不通过就交给用户处理。LLM Wiki 引擎（nashsu 版）
         # 的几个代码有专门的文案和指引，直接用原因代码登记事项；
         # 其他原因仍走通用的 engine_unavailable。

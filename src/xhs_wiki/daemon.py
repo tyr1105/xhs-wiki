@@ -2277,13 +2277,18 @@ class ServiceHandler(BaseHTTPRequestHandler):
         if not healthy:
             missing.append("engine")
         # 3. 模型：设置合法；API 类还要求钥匙串里已经有 Key。
-        provider_name = settings["llm"]["provider"]
-        chain = self.server.keychain() if callable(self.server.keychain) else self.server.keychain
-        if provider_name in ("anthropic", "openai_compatible"):
-            try:
-                chain.load(provider_name)
-            except LLMError:
-                missing.append("llm_key")
+        #    LLM Wiki 引擎（nashsu 版）例外：整理用的模型和密钥都在
+        #    LLM Wiki 应用里配置，xhs-wiki 自己的 Key 用不到，不检查；
+        #    引擎侧的模型检查已由上面的 health()（llmwiki_model）覆盖。
+        if settings["engine"] != "llmwiki":
+            provider_name = settings["llm"]["provider"]
+            chain = (self.server.keychain() if callable(self.server.keychain)
+                     else self.server.keychain)
+            if provider_name in ("anthropic", "openai_compatible"):
+                try:
+                    chain.load(provider_name)
+                except LLMError:
+                    missing.append("llm_key")
         # 4. 登录：设置里已经识别到主页地址。
         if not settings.get("profile_url"):
             missing.append("login")

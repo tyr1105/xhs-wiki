@@ -16,6 +16,7 @@ import pytest
 
 from xhs_wiki import daemon, engines, runner
 from xhs_wiki.ledger import Ledger
+from xhs_wiki.llm.base import LLMError
 from xhs_wiki.store import SKILL_TARGETS, ServiceStore
 
 
@@ -136,6 +137,50 @@ def test_finish_health_is_closed_even_if_login_missing(setup):
     assert response(setup)[0] == 400
     assert "login" in response(setup)[1]["missing"]
     setup.engine.close.assert_called_once_with()
+
+
+def test_finish_llmwiki_ignores_missing_llm_key(setup):
+    """llmwiki 引擎：钥匙串里没有 xhs-wiki 的 Key 也不算 setup_incomplete。
+
+    LLM Wiki 引擎的整理模型和密钥在 LLM Wiki 应用里配置，xhs-wiki 自己
+    的 Key 用不到（引擎侧模型检查已由 health() 的 llmwiki_model 覆盖）。
+    """
+    class _NoKeyChain:
+        """替身钥匙串：load 一律抛 LLMError，模拟没有该提供方的 Key。"""
+        def load(self, name):
+            raise LLMError("auth_failed", "synthetic key missing")
+
+    setup.server.keychain = Mock(return_value=_NoKeyChain())
+    setup.store.update_settings({
+        "engine": "llmwiki",
+        "llm": {"provider": "anthropic", "model": "fake-model",
+                "base_url": None},
+        "profile_url": "https://www.xiaohongshu.com/user/profile/" + "c" * 24})
+    setup.handler._post_setup_finish()
+    code, payload = response(setup)
+    assert code == 200
+    assert payload["ok"] is True
+    assert setup.store.load_settings()["setup_completed"] is True
+
+
+def test_finish_markdown_still_requires_llm_key(setup):
+    """轻量引擎行为不变：API 提供方缺 Key 仍报 setup_incomplete / llm_key。"""
+    class _NoKeyChain:
+        """替身钥匙串：load 一律抛 LLMError，模拟没有该提供方的 Key。"""
+        def load(self, name):
+            raise LLMError("auth_failed", "synthetic key missing")
+
+    setup.server.keychain = Mock(return_value=_NoKeyChain())
+    setup.store.update_settings({
+        "engine": "markdown",
+        "llm": {"provider": "anthropic", "model": "fake-model",
+                "base_url": None},
+        "profile_url": "https://www.xiaohongshu.com/user/profile/" + "d" * 24})
+    setup.handler._post_setup_finish()
+    code, payload = response(setup)
+    assert code == 400
+    assert "llm_key" in payload["missing"]
+    assert not setup.store.load_settings()["setup_completed"]
 
 
 def test_daemon_and_runner_delegate_to_same_factory(setup, monkeypatch):

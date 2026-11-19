@@ -142,6 +142,36 @@ def test_doctor_markdown_does_not_check_llmwiki(cli_environment,
     assert not any("LLM Wiki" in line for line in env.lines)
 
 
+def test_doctor_llmwiki_hides_own_llm_check(cli_environment, fake_engine):
+    """llmwiki 引擎：不显示 xhs-wiki 自己的「整理模型（…）」检查。
+
+    LLM Wiki 引擎的整理模型由应用自己调用，xhs-wiki 的 settings["llm"]
+    用不到；新引擎的四项检查（含「LLM Wiki 整理模型」）已覆盖同一信息。
+    """
+    env = cli_environment
+    env.store.update_settings({"engine": "llmwiki"})
+    assert cli.main(["doctor"]) == 0
+    # 不出现带提供方名的旧检查行（「LLM Wiki 整理模型」没有括号，不受影响）。
+    assert not any("整理模型（" in line for line in env.lines)
+    # 新引擎自己的整理模型检查仍在。
+    assert any("LLM Wiki 整理模型" in line and "正常" in line
+               for line in env.lines)
+
+
+def test_doctor_markdown_still_shows_own_llm_check(cli_environment,
+                                                   fake_engine):
+    """轻量引擎行为不变：provider 未登录时照旧报「整理模型（claude_code）」。"""
+    env = cli_environment
+    # 用替身依赖模拟 claude_code 未登录（不跑真实命令）。
+    failing = SimpleNamespace(
+        make_provider=lambda settings: SimpleNamespace(
+            check=lambda: (False, "not_logged_in")),
+        key_exists=lambda name: True)
+    assert cli.main(["doctor"], deps_factory=lambda: failing) == 0
+    assert any("整理模型（claude_code）" in line and "✗" in line
+               for line in env.lines)
+
+
 def test_assets_has_no_llmwiki_installer_subcommand(cli_environment):
     """v0.4.0 起不再提供 install-llmwiki 子命令。"""
     env = cli_environment
