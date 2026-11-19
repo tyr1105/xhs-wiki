@@ -2,7 +2,7 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [0.3.0] - 2026-11-03
+## [0.3.0] - 2026-11-19
 
 ### 新增
 - 查询 Skill 不只装进 Claude Code：首次向导多了第 6 步“在哪些 AI 工具里提问”，控制台日常页也有同一组勾选框。可以把同一份 Skill 装进腾讯 WorkBuddy（`~/.workbuddy/skills/xhs-wiki/`）；Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi Code、Qwen Code、新版 Qoder、Zed、Devin Desktop（原 Windsurf）、OpenCode、Goose、Amp、Factory Droid 共用的 `~/.agents/skills/xhs-wiki/`；以及“更多 AI 工具”里各有目录的腾讯 CodeBuddy、字节 Trae（国际版、国内版）、阿里 Qoder、Qoder CN（原通义灵码，IDE 和命令行版各一项）、AWS Kiro、Google Antigravity（含 Antigravity CLI：免费和 Google One 用户的 Gemini CLI 已在 2026-06-18 换成它，它不读共用目录）、Cline。默认只勾 Claude Code，和以前一样。
