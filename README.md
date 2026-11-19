@@ -28,7 +28,7 @@ Your RedNote saves, finally useful to your AI.
 
 **xhs-wiki** 每天自动把你的新收藏下载到本机，在本机识别图片里的文字、把视频里的话转成文字，再交给你选的 AI 模型，整理成按主题组织的知识库（普通的 Markdown 文件，也就是任何编辑器都能直接打开的纯文本笔记）。之后在 Claude Code（Anthropic 的 AI 助手）、腾讯 WorkBuddy、Codex、Cursor、Trae 这类 AI 工具里问到你收藏过的东西，它会调用 xhs-wiki 装好的查询 Skill（写给 AI 的一份查询说明），先查你自己的收藏，再回答并附上出处（来源笔记的标题和链接）；也可以直接说“查一下我的收藏”（实测过的是 Claude Code 和 Codex 命令行，其他工具按各家官方文档支持、还没实测）。
 
-这个项目源自作者的自用工作流（那套流程已经把 **1100 多条**小红书收藏整理成个人知识库，每天自动跟进新收藏）。xhs-wiki 是它的开源通用版，作者在全新安装的环境里完整跑通过导入最近 20 条收藏。
+这个项目源自作者的自用工作流（那套流程已经把 **1100 多条**小红书收藏整理成个人知识库，每天自动跟进新收藏）。xhs-wiki 是它的开源通用版，作者曾用早期版本在全新安装的环境里完整跑通导入最近 20 条收藏；这不代表 v0.4.0 新 LLM Wiki 引擎的完整链路已经真机验收。
 
 ## 用起来什么样
 
@@ -81,7 +81,7 @@ Claude：你收藏的做法是 200℃ 先烤 12 分钟，翻面再烤 8 分钟�
 
 **在国内网络能装吗？** 需要能访问 GitHub：安装脚本和源码包都放在 GitHub 上。能连上 GitHub、但下载 Python 包或语音模型很慢的，安装时加 `--mirror cn`，切到国内镜像。→ [国内网络](#国内网络)
 
-**我不会编程，难吗？要多久？** 只需要在终端里粘贴一行命令、回答几个“是/否”，其余都在浏览器里点完：一共 6 步，其中一步是扫码登录。不用另外装 Homebrew、git 或 ffmpeg。需要提前准备好的是 Google Chrome 和整理模型。整理模型指终端里已经能用、并且登录好的 `claude`（Claude Code）或 `codex`（Codex），或者一个大模型 API Key（见[整理模型怎么选](#整理模型怎么选)）；这是最需要自己动手的一步，还没有的话，先按它们的官方说明装好、登录，再来安装。没准备好也能走完向导，但第一次运行会停下，提示“整理模型不可用”。安装时要下载 Python 运行环境和依赖，默认语音模型（约 1.5 GiB）在后台下载、不耽误你做设置，快慢主要看网速。第一次整理要多久，见[收藏很多，要多久才能整理完？](#收藏很多要多久才能整理完) → [快速开始](#快速开始)
+**我不会编程，难吗？要多久？** 只需要在终端里粘贴一行命令、回答几个“是/否”，其余都在浏览器里点完：一共 6 步，其中一步是扫码登录。不用另外装 Homebrew、git 或 ffmpeg。需要提前准备好的是 Google Chrome 和整理模型。整理模型指终端里已经能用、并且登录好的 `claude`（Claude Code）或 `codex`（Codex），或者一个大模型 API Key（见[整理模型怎么选](#整理模型怎么选)）；这是最需要自己动手的一步，还没有的话，先按它们的官方说明装好、登录，再来安装。轻量引擎没准备好模型也能走完向导，但第一次运行会停下，提示“整理模型不可用”；选 LLM Wiki 引擎则需要先自行安装应用并在其中配置模型，见[两种知识库引擎](#两种知识库引擎)。安装时要下载 Python 运行环境和依赖，默认语音模型（约 1.5 GiB）在后台下载、不耽误你做设置，快慢主要看网速。第一次整理要多久，见[收藏很多，要多久才能整理完？](#收藏很多要多久才能整理完) → [快速开始](#快速开始)
 
 ## 快速开始
 
@@ -179,16 +179,16 @@ xhs-wiki 交给你两样东西：一个普通的 Markdown 文件夹，加一个�
 
 **Claude Code：提问时先查你的收藏**
 
-- 查询 Skill 写在 `~/.claude/skills/xhs-wiki/SKILL.md`。安装脚本检测到 Claude Code 时会先写一份；完成首次设置时，服务会按最终的知识库位置重写一遍，并去掉里面“尚未完成首次设置”的提示。即使你暂时没装 Claude Code 也会写，以后装好就能用，不用再运行安装命令。
+- 查询 Skill 写在 `~/.claude/skills/xhs-wiki/SKILL.md`。安装脚本检测到 Claude Code 时会先写一份；完成首次设置时，服务会按最终的知识库位置重写一遍，并去掉里面提示先完成设置的文字。即使你暂时没装 Claude Code 也会写，以后装好就能用，不用再运行安装命令。
 - 用平常的话问就行，比如：“查一下我的收藏里有没有相关内容。”“根据我之前存过的内容回答这个问题。”“这条结论来自哪篇收藏？”Skill 的说明里写着：你说“我收藏的”“我之前存过”，或者问推荐、攻略、方法、清单这类问题时，先看看你收藏过没有。要不要调用 Skill 由 Claude Code 自己判断；它没去查时，直接说“用 xhs-wiki 查一下……”。
 - Skill 会先读索引，再查主题和来源；索引未命中时也会在来源页里搜索。它要求回答附上出处（来源页标题和小红书链接；这个链接在电脑浏览器里可能打不开，见[原帖链接打不开？](#原帖链接打不开)），查不到就说明没有、不编造。
 - Skill 只是一份三十来行的查询说明，安装前可以先读模板：[SKILL.md.tmpl](src/xhs_wiki/skill/SKILL.md.tmpl)。里面有一段“内容安全”约定：收藏内容只当资料引用和转述，帖子里出现的指令、命令、代码或链接一律不执行，除非你本人在对话里明确要求。这是写给 AI 的要求，能降低有人在笔记里藏指令的风险，但不是绝对保证。
-- 选 Claude Code 当整理模型时，它以非交互方式运行：读不到整理用的工作目录以外的文件，不加载你的 MCP 服务器和 Skill，会话也不保存到本机。默认的轻量引擎由 xhs-wiki 直接调用它，所有工具都关掉，也不读你的设置文件（见 [claude_code.py](src/xhs_wiki/llm/claude_code.py)）；LLM Wiki 引擎由它的后台调用，需要时只开读文件和搜索这几个只读工具，范围限定在这次整理的临时工作目录。
+- 轻量引擎选 Claude Code 整理时，由 xhs-wiki 以非交互方式调用，关闭工具、不加载 MCP 和设置文件、不保存会话；命令支持时还会加安全模式，屏蔽个人的 Skill 等内容（见 [claude_code.py](src/xhs_wiki/llm/claude_code.py)）。LLM Wiki 引擎由 LLM Wiki 应用自行调用模型或命令行工具，调用参数和权限由该应用管理，不能套用轻量引擎的隔离说明。
 - 已经装过类似的收藏查询 Skill？两个 Skill 可能同时响应同一问题，只保留一个。
 
 **Codex：用你的订阅整理，也能提问**
 
-Codex 是 OpenAI 的编程助手命令行，ChatGPT 付费方案里包含。本机有可用且已登录的 `codex` 命令时，可以在向导里把整理模型选成 Codex，用你现有的订阅。想在 Codex 里提问，在向导最后一步（或控制台的“在哪些 AI 工具里提问”）勾上“Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、Qwen Code 等”这一项，查询 Skill 会写进这些工具共用的 `~/.agents/skills/xhs-wiki/`。作者 2026-11-03 用 codex-cli 0.166 和一个虚构的知识库实测过：Codex 自己找到这个 Skill，先读索引，再读主题页和来源页，回答附出处；没收藏过的会说没有；知识库读不到时会说读不到、请你开放权限，不会说成没收藏过（实测时 Skill 放在测试项目的 `.agents/skills`，和 `~/.agents/skills` 是同一套机制）。选 Codex 整理时的隐私注意事项见[数据与隐私](#数据与隐私)。
+Codex 是 OpenAI 的编程助手命令行，ChatGPT 付费方案里包含。本机有可用且已登录的 `codex` 命令时，轻量引擎可以在 xhs-wiki 向导里把整理模型选成 Codex；LLM Wiki 引擎则在 LLM Wiki 的设置里选 Codex，使用你现有的订阅。想在 Codex 里提问，在向导最后一步（或控制台的“在哪些 AI 工具里提问”）勾上“Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、Qwen Code 等”这一项，查询 Skill 会写进这些工具共用的 `~/.agents/skills/xhs-wiki/`。作者 2026-11-03 用 codex-cli 0.166 和一个虚构的知识库实测过：Codex 自己找到这个 Skill，先读索引，再读主题页和来源页，回答附出处；没收藏过的会说没有；知识库读不到时会说读不到、请你开放权限，不会说成没收藏过（实测时 Skill 放在测试项目的 `.agents/skills`，和 `~/.agents/skills` 是同一套机制）。选 Codex 整理时的隐私注意事项见[数据与隐私](#数据与隐私)。
 
 **其他 AI 工具：勾上就装好**
 
@@ -214,7 +214,7 @@ WorkBuddy 的产品文档只写了“上传或新建的技能存在用户配置�
 
 **Obsidian：直接打开知识库文件夹**
 
-用 Obsidian 把 `~/XHS-Wiki` 当作一个仓库（vault）打开就能看，英文界面里是 Open folder as vault。
+用 Obsidian 把 `~/XHS-Wiki` 当作一个仓库（vault）打开就能看，英文界面里是 Open folder as vault。下面的目录和页面格式属于轻量引擎；LLM Wiki 引擎的索引是 `wiki/index.md`，来源页在 `wiki/sources/`，主题分布在 `wiki/concepts/`、`wiki/entities/`、`wiki/synthesis/`、`wiki/comparisons/`。
 
 ```text
 ~/XHS-Wiki/            默认位置，可在向导里修改
@@ -241,11 +241,13 @@ WorkBuddy 的产品文档只写了“上传或新建的技能存在用户配置�
 
 | 保存在你的 Mac 上 | 整理时交给你选的整理模型 | 不发给整理模型 |
 |---|---|---|
-| 知识库、下载中的原件、处理记录、小红书登录状态；API Key 存在 macOS 钥匙串 | 提取出的标题、作者、发布时间、不带签名的原帖链接、正文、标签、语音转写、图片文字，以及整理时需要的摘要和主题文字 | 原图、原视频（默认在入库并核验通过后自动删除） |
+| 知识库、下载中的原件、处理记录、小红书登录状态；轻量引擎的 API Key 存在 macOS 钥匙串，LLM Wiki 的密钥另存于它自己的文件（见下文） | 提取出的标题、作者、发布时间、不带签名的原帖链接、正文、标签、语音转写、图片文字，以及整理时需要的摘要和主题文字 | 原图、原视频（默认在入库并核验通过后自动删除） |
 
-选 Codex 整理时还要多注意一点：xhs-wiki 交给它的同样只有提取出的文字，但 Codex 运行时保留了它自己的工具（在只读沙箱里，仍能读取你电脑上的文件），也会加载你自己的 Codex 配置。如果某条收藏的正文里藏了指令，有可能诱导它去读别的本机文件，读到的内容会交给模型服务，也可能被写进知识库。选 Claude Code 时，它读不到整理用的工作目录以外的文件，也不加载你的 MCP 和 Skill（见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)）。
+轻量引擎选 Codex 整理时还要多注意一点：xhs-wiki 交给它的同样只有提取出的文字，但 Codex 运行时保留了它自己的工具（在只读沙箱里，仍能读取你电脑上的文件），也会加载你自己的 Codex 配置。如果某条收藏的正文里藏了指令，有可能诱导它去读别的本机文件，读到的内容会交给模型服务，也可能被写进知识库。轻量引擎对 Claude Code 的调用限制见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)。LLM Wiki 引擎使用的客户端权限和配置由 LLM Wiki 管理。
 
-登录使用独立的 Chrome 资料夹，不读取你日常浏览器里的其他资料。API Key 不写入 `settings.json`。仓库只提供工具，不附带任何人的收藏、知识库或主题分类。
+登录使用独立的 Chrome 资料夹，不读取你日常浏览器里的其他资料。轻量引擎的 API Key 不写入 xhs-wiki 的 `settings.json`。仓库只提供工具，不附带任何人的收藏、知识库或主题分类。
+
+**LLM Wiki 引擎的密钥由 LLM Wiki 保存，以明文写在 `~/Library/Application Support/com.llmwiki.app/app-state.json`。** xhs-wiki 只检查是否填了密钥，不提取密钥用于调用，也不显示、记录或另存密钥内容。发现文件权限允许其他账号访问时，控制台提供“收紧为仅本人可读”按钮，把该文件改为 0600（只有本人能读写）；它不改文件内容，也不会把明文加密。
 
 在 AI 工具里提问时，工具读到的知识库内容会成为对话的一部分，交给它所用的模型服务处理（比如 Claude Code 交给 Anthropic，Codex 交给 OpenAI，WorkBuddy 交给你在里面选的模型），和你平时让它读电脑上的其他文件一样。
 
@@ -261,7 +263,7 @@ WorkBuddy 的产品文档只写了“上传或新建的技能存在用户配置�
 | 语音模型、下载中的原件 | 上述程序目录中的 `models/`、`work/` |
 | 服务日志 | `~/Library/Logs/xhs-wiki/` |
 | 查询 Skill | Claude Code：`~/.claude/skills/xhs-wiki/SKILL.md`；勾选了才有：各工具自己的技能目录，比如 WorkBuddy 的 `~/.workbuddy/skills/xhs-wiki/`、Codex 等共用的 `~/.agents/skills/xhs-wiki/`（完整清单见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)） |
-| API 密钥 | macOS 钥匙串 |
+| API 密钥 | 轻量引擎：macOS 钥匙串；LLM Wiki 引擎：`~/Library/Application Support/com.llmwiki.app/app-state.json`（明文） |
 
 ## 风险与声明
 
@@ -277,9 +279,9 @@ WorkBuddy 的产品文档只写了“上传或新建的技能存在用户配置�
 
 ## 前提条件
 
-- **Mac：macOS 13 或更新版本。** 支持 Apple 芯片和 Intel；可选的 LLM Wiki 引擎仅支持 Apple 芯片。自动测试（GitHub Actions）在 Apple 芯片和 Intel 两种 macOS 15 上运行全部测试。作者的真机安装都在 Apple 芯片的 Mac 上完成，Intel 机型和 macOS 13 还没有真机验证，遇到问题欢迎[提 Issue](https://github.com/tyr1105/xhs-wiki/issues)。
+- **Mac：macOS 13 或更新版本。** 两种引擎都支持 Apple 芯片和 Intel；选 LLM Wiki 时需自行安装适合芯片的应用版本。自动测试（GitHub Actions）在 Apple 芯片和 Intel 两种 macOS 15 上运行全部测试。作者的真机安装都在 Apple 芯片的 Mac 上完成，Intel 机型和 macOS 13 还没有真机验证，遇到问题欢迎[提 Issue](https://github.com/tyr1105/xhs-wiki/issues)。
 - **Google Chrome：** 需安装在标准的“应用程序”目录，用来扫码登录和读取自己的收藏。
-- **整理模型：** 准备[四种方式](#整理模型怎么选)中的一种，使用自己的订阅或 API 额度。
+- **整理模型：** 轻量引擎准备[四种方式](#整理模型怎么选)中的一种；LLM Wiki 引擎在 LLM Wiki 里选择和配置模型，使用自己的订阅或 API 额度。
 - **磁盘：** 安装时检查至少有 **10 GiB** 空闲；之后每次运行开始前也要求剩余不少于 10 GiB，不够就不开跑，并在“待你处理”里提示；下载收藏原件时跌破 10 GiB 也会停止下载。程序环境和默认语音模型装好后还会再占 2 GiB 多，所以建议安装前留出 13 GiB 左右。默认语音模型约 **1.5 GiB**；快速模式约 **227 MiB**（含很小的语音检测模型）。还需为下载中的原件和知识库留空间。
 - **网络：** 需要能访问 GitHub。安装脚本、xhs-wiki 源码包、下载组件（XHS-Downloader）和 SenseVoice 模型都从 GitHub 下载；电脑上还没有 uv 时，要先从 astral.sh 下载 uv 的官方安装脚本（再由它下载 uv 本身）；Python 运行环境由 uv 下载（默认也来自 GitHub），Python 依赖来自 PyPI；默认的 Whisper 语音模型来自 Hugging Face，连不上时会自动换成镜像 hf-mirror.com。组件和模型的固定地址和校验值见 [assets_manifest.json](src/xhs_wiki/assets_manifest.json)；国内网络见[国内网络](#国内网络)。
 
@@ -323,7 +325,7 @@ bash install.sh --from-local .
 
 下载组件和语音模型由服务在后台准备，网页顶部会显示进度；这时可以先完成向导，资源准备好后才开始导入。组件和模型用系统自带的 curl 下载，网络中断后再次启动会接着下载；下载失败时点控制台顶部的“重试”。
 
-脚本会询问是否安装 **LaunchAgent**，这是 macOS 在你登录电脑后自动启动后台程序的机制。安装后，服务可以持续处理定时任务。不安装时也会启动本次使用的临时服务，但重启电脑后需要手动运行 `xhs-wiki serve`，并保持那个终端窗口开着。在安装命令末尾加 `--no-launch-agent` 可以直接跳过自启设置（远程命令写成 `… | bash -s -- --no-launch-agent`）。
+脚本会询问是否安装 **LaunchAgent**，这是 macOS 在你登录电脑后自动启动服务的机制。安装后，服务可以持续处理定时任务。不安装时也会启动本次使用的临时服务，但重启电脑后需要手动运行 `xhs-wiki serve`，并保持那个终端窗口开着。在安装命令末尾加 `--no-launch-agent` 可以直接跳过自启设置（远程命令写成 `… | bash -s -- --no-launch-agent`）。
 
 装好 LaunchAgent 后，macOS 可能弹出通知，提示添加了新的后台项目，显示的名字可能是 python3.12 而不是 xhs-wiki，这就是 xhs-wiki 的后台服务。如果在“系统设置 → 通用 → 登录项”（macOS 15 起叫“登录项与扩展”）里把它关掉，定时整理就不会再运行。
 
@@ -341,17 +343,26 @@ bash install.sh --from-local .
 
 ## 首次设置：控制台向导
 
-1. **知识库位置：** 默认 `~/XHS-Wiki`，也可以选其他本机文件夹，但这些位置不能用：`~/Library` 里面（所以 iCloud 里的 Obsidian 库不能直接用；新版 Dropbox、Google Drive、OneDrive 的同步文件夹也在 `~/Library` 下，同样不行）、`~/.claude` 和 `~/.codex` 里面、主目录本身、外接硬盘等磁盘的根目录（里面的子文件夹可以）、程序包（如 `.app`），以及主目录下“文稿”“桌面”“下载”“影片”“音乐”“图片”“公共”这几个文件夹本身。这几个文件夹里面的子文件夹可以选，但后台服务访问“文稿”“桌面”“下载”里的内容时，macOS 可能弹出权限请求，也可能直接拒绝，没有权限时知识库写不进去；最省事的是用默认的 `~/XHS-Wiki`，或在主目录下新建一个文件夹。以后在“重新设置”里换位置时，本工具生成的内容（`索引.md`、`暂缓.md`、`主题/`、`来源/`、`.xhs-wiki/`）会搬到新位置，原文件夹里你自己放的其他文件不会动；新位置必须是空文件夹或还不存在，里面已经有文件时会拒绝，也不能放在原来的知识库文件夹里面。
-2. **引擎：** 一般选“轻量引擎（推荐）”。需要图谱和版本管理时，可选 LLM Wiki 引擎（仅 Apple 芯片）；第一次点击会下载后台程序，角标显示进度，下载并检查通过后才能进入下一步。
-3. **整理模型：** 选提供方，填模型名，再点“测试”。Claude Code 和 Anthropic API 会预填建议的模型名；Codex 的模型名可以留空，用 Codex 自己的默认模型。两种命令行方式只检查登录状态；API 方式会真实发一次很小的请求，先问你是否同意产生少量费用。
+1. **知识库位置：** 默认 `~/XHS-Wiki`，也可以选其他本机文件夹，但这些位置不能用：`~/Library` 里面（所以 iCloud 里的 Obsidian 库不能直接用；新版 Dropbox、Google Drive、OneDrive 的同步文件夹也在 `~/Library` 下，同样不行）、`~/.claude` 和 `~/.codex` 里面、主目录本身、外接硬盘等磁盘的根目录（里面的子文件夹可以）、程序包（如 `.app`），以及主目录下“文稿”“桌面”“下载”“影片”“音乐”“图片”“公共”这几个文件夹本身。这几个文件夹里面的子文件夹可以选，但后台服务访问“文稿”“桌面”“下载”里的内容时，macOS 可能弹出权限请求，也可能直接拒绝，没有权限时知识库写不进去；最省事的是用默认的 `~/XHS-Wiki`，或在主目录下新建一个文件夹。以后在“重新设置”里换位置时，旧目录带 `.xhs-wiki/` 标记才会触发搬迁：搬走轻量引擎生成的 `索引.md`、`暂缓.md`、`主题/`、`来源/`、`.xhs-wiki/`，自己的其他文件留在原处；这时新位置必须为空或不存在，也不能在旧库里面。LLM Wiki 的项目文件不由这套轻量搬迁规则自动转换；选择已有项目时保留其内容，见[升级说明](#从-v02v03-升级)。
+2. **引擎：** 一般选“轻量引擎（推荐）”。需要 LLM Wiki 的图谱、问答时，可选 LLM Wiki 引擎：先自行安装 0.6.13 或更新版本，在应用里新建或打开知识库项目，再回控制台点“重新检查”。这里检查应用、版本、项目结构和模型配置；只差模型配置时可以进入第 3 步处理。
+3. **整理模型：** 轻量引擎选提供方、填模型名，再点“测试”。Claude Code 和 Anthropic API 会预填建议值；Codex 可留空，用它自己的默认模型。命令行方式只检查登录，API 方式先确认费用再发一次小请求。LLM Wiki 引擎改为显示应用内的配置指引、当前项目和模型检查结果；点“测试”会先确认费用，再整理一条虚构笔记，最多等 5 分钟。结束时会尝试删除测试用的原始来源文件，应用生成的页面保留，可在 LLM Wiki 里删除。
 4. **扫码登录：** 点击“获取二维码”后，会弹出一个写着 **“登录专用窗口”** 的小窗口。请用手机小红书扫描**控制台里的二维码**，不要提前关闭小窗口；登录成功后窗口会自动关闭，并自动识别主页，不用填写账号编号。
-5. **导入范围：** 建议先选“最近 20 条（推荐，先看效果）”，再点“完成并开始”。这个选择只影响第一次导入，之后每天的新收藏都会处理。选“全部收藏”会把已有收藏全部整理进知识库，控制台会提醒这需要较长时间，并会占用模型额度（调用次数按收藏数量增加）。每次运行最多下载 **100 条**新收藏（默认值，可在“定时设置”的“每次最多新增条数（1–200）”里修改），其中最多 50 条在这一轮整理完，其余由之后的追加运行接着整理；收藏多的话会分几天完成。
+5. **导入范围：** 建议先选“最近 20 条（推荐，先看效果）”，再进入第 6 步。这个选择只影响第一次导入，之后每天的新收藏都会处理。选“全部收藏”会把已有收藏全部整理进知识库，控制台会提醒这需要较长时间，并会占用模型额度（调用次数按收藏数量增加）。每次运行最多下载 **100 条**新收藏（默认值，可在“定时设置”的“每次最多新增条数（1–200）”里修改），其中最多 50 条在这一轮整理完，其余由之后的追加运行接着整理；收藏多的话会分几天完成。
+
+6. **提问工具：** 勾选平时用的 AI 工具（默认 Claude Code），再点“完成并开始”，查询 Skill 会写到勾选的位置。
 
 先选了“最近 20 条”，之后想把更早的收藏也整理进来：在日常页点“重新设置”重走一遍向导，第 5 步改选“全部收藏”，之前跳过的旧收藏会重新排队；已整理的内容不会删除。有运行在进行时，要等当前运行结束后再点。
 
 ## 整理模型怎么选
 
-“整理模型”负责把提取出的文字归纳成知识库，与下面在本机运行的语音模型是两回事。
+“整理模型”负责把提取出的文字归纳成知识库，与下面在本机运行的语音模型是两回事。先看你选了哪种引擎：
+
+| 引擎 | 在哪里选整理模型 | 可用方式 |
+|---|---|---|
+| 轻量 Markdown | xhs-wiki 的向导或控制台 | 下面的四种方式 |
+| LLM Wiki | LLM Wiki 的设置 → LLM Models，并指定 Ingest model（整理用模型） | Anthropic、OpenAI 等 API，Claude Code、Codex 命令行和本机模型；以应用提供的选项为准 |
+
+**下面四项是轻量引擎的设置方式。** LLM Wiki 的步骤见[两种知识库引擎](#两种知识库引擎)。
 
 | 方式 | 需要准备 | 费用 |
 |---|---|---|
@@ -364,23 +375,39 @@ bash install.sh --from-local .
 
 OpenAI 兼容接口也可以填在你 Mac 上运行的模型服务，例如 Ollama、LM Studio 提供的 `http://127.0.0.1:端口/v1`（本机地址可以用 http），这样整理这一步也不离开你的 Mac。向导要求填 API Key，本机服务用不到的话填任意字符即可。小模型的整理质量没有测试过，结果可能不稳定，建议先用“最近 20 条”试。
 
-轻量 Markdown 引擎支持四种方式；LLM Wiki 引擎仅支持 Claude Code 和 Codex。默认提供方是 Claude Code。模型是否可用取决于你的账号和服务，请填写自己可用的名称；通过命令行登录检查不等于已验证一次实际整理。
+轻量 Markdown 引擎默认提供方是 Claude Code；LLM Wiki 引擎使用它自己的模型配置。模型是否可用取决于你的账号和服务，请填写自己可用的名称；通过命令行登录检查不等于已验证一次实际整理。
 
 测试时提示“没找到 claude 命令”（或 codex），而你确实装了：后台服务按安装时终端里的 PATH（再加几个常见位置）查找这些命令，装好之后重新运行一次安装命令即可。
 
-API Key 保存在 **macOS 钥匙串**（系统保存凭据的地方），不写入 `settings.json`。项目不提供模型订阅或 API 额度。
+轻量引擎的 API Key 保存在 **macOS 钥匙串**（系统保存凭据的地方），不写入 `settings.json`。LLM Wiki 的密钥是应用保存的明文文件，见[数据与隐私](#数据与隐私)。项目不提供模型订阅或 API 额度。
 
 ## 两种知识库引擎
 
 **轻量 Markdown，默认选项。** 生成普通的 Markdown 文件，任何文本编辑器都能打开，也可以用 Obsidian 浏览。知识库包含 `索引.md`、`暂缓.md`、`主题/`、`来源/`；来源页保留文字和出处，主题页汇总相关来源（完整目录见[接入 Claude Code 和 Obsidian](#接入-claude-code-和-obsidian)）。内容不足的笔记（比如只有话题标签，或视频里只有背景音乐）会标为“暂缓”：保留来源页，不并入主题。
 
-**LLM Wiki，进阶选项，已接入向导。** 适合希望在 LLM Wiki 桌面版里浏览图谱、手动编辑和查看版本的人。只支持 Apple 芯片的 Mac，整理前需在本机安装并登录 Claude Code 或 Codex；不能用 API 类提供方。首次选择时自动下载并配置无窗口后台，不需要手改程序路径。也可运行 `xhs-wiki assets install-llmwiki` 预先下载，再用 `xhs-wiki doctor` 检查。
+**LLM Wiki，进阶选项。** v0.4.0 起对接 [nashsu/llm_wiki](https://github.com/nashsu/llm_wiki) 桌面应用（GPL-3.0），可以在应用里浏览图谱和问答。Apple 芯片、Intel 都可以。请从它的 [Releases](https://github.com/nashsu/llm_wiki/releases) 自行安装 **0.6.13 或更新版本**，放在 `/Applications/LLM Wiki.app` 或 `~/Applications/LLM Wiki.app`；xhs-wiki 不下载或分发它的文件。
 
-后台来自 [tyr1105/llm-wiki-desktop 的 headless 分支](https://github.com/tyr1105/llm-wiki-desktop/tree/headless)，基于上游 v2.0.6、采用 Apache-2.0。下载的是 [GitHub Release](https://github.com/tyr1105/llm-wiki-desktop/releases/tag/headless-v2.0.6-2) 中的 `llm-wiki-headless-2.0.6-2-aarch64-apple-darwin.tar.gz`，由 GitHub Actions 在干净构建机上构建；用系统 curl 下载，按[清单](src/xhs_wiki/assets_manifest.json)固定的 SHA-256 核对压缩包和解压后的程序本体。包内保留 LICENSE、NOTICE 和 HEADLESS.md。清单固定的是这个附件的真实校验值和大小；已在 Apple 芯片的 Mac 上用虚构笔记跑通下载、导入、Update Wiki、轻量检查和确认的全流程。
+设置时注意三件事：
 
-**整理出的页面固定用简体中文写**，和 LLM Wiki 桌面版的界面语言无关，没装桌面版也一样。xhs-wiki 启动后台时用环境变量 `LLM_WIKI_CONTENT_LANGUAGE=zh-CN` 指定页面语言（后台 2.0.6-2 起支持），不改桌面版的任何设置。
+1. **先在 LLM Wiki 里新建或打开项目。** xhs-wiki 选择的知识库文件夹要有 `purpose.md`、`schema.md` 和 `.llm-wiki/`；LLM Wiki 当前打开的也必须是这个项目。项目不一致时，整理前会停下提示，不会替你切换项目。
+2. **模型在 LLM Wiki 的设置 → LLM Models 里选。** 添加或选择提供方，按需填写密钥，再把 **Ingest model（整理用模型）** 指向它。支持 Anthropic、OpenAI 等 API，也支持 Claude Code、Codex 命令行；命令行、本机 Ollama 和指向本机地址的自定义提供方不要求填写 API 密钥。控制台只检查配置是否齐备；检查通过不等于命令行已登录或模型实际调用成功，可用“测试”按钮试一条。
+3. **整理时保持 LLM Wiki 运行。** 关掉窗口可以，退出应用不行。每次处理前 xhs-wiki 会检查应用，没运行就尝试在后台启动，再核对打开的项目；启动失败时按提示手动打开。运行中不要退出或切到其他项目。
 
-**自动整理期间要关闭 LLM Wiki 桌面版**，两者共用单实例锁。需要你确认的整理改动会暂停，并在控制台显示“LLM Wiki 有一组整理改动待确认”；等自动整理停止、后台关闭后，在桌面版打开同一个知识库项目，查看差异后接受或拒绝，再关闭桌面版并回到控制台继续。控制台本身不提供审阅按钮。丢失已有来源引用或新增未知引用的候选会自动驳回；删除、覆盖或一次改动至少 10 个已有页面会交给你确认。
+xhs-wiki 把提取的文字放进项目的 `raw/sources/xhs/`，由 LLM Wiki 自动整理，再核对记录和生成页面。**不要手动删除 `raw/sources/xhs/` 里的文件**：LLM Wiki 发现来源被删，会把这条来源整理出的页面一并删除。xhs-wiki 清理原件时只删下载的图片和视频，不动这个文件夹。此前用虚构笔记、Haiku 5.5 的验证中，单条整理约 **40~60 秒**，不包含下载、识字和语音转写，实际耗时取决于模型和内容。应用会产生“待审核”建议，控制台显示“LLM Wiki 待审核 N 条”；到 LLM Wiki 的审核页处理即可，**不影响整理继续进行**。
+
+**Claude 5 系列的已知问题（LLM Wiki 0.6.13）：** 内置的“Anthropic (Claude)”选项可能发送模型不接受的旧参数，出现 `llmwiki_model_param_rejected`。添加自定义提供方（Add custom provider），协议选 **Anthropic-compat**，Endpoint 填 `https://api.anthropic.com`，模型填你能用的 Claude 5 型号（例如 `claude-haiku-5-5`），再把 **Ingest model** 选成这个自定义提供方。
+
+**当前运行限制：** LLM Wiki 的实际整理使用上述应用内模型，但 xhs-wiki 运行前仍会检查自己原来的模型设置。若应用内测试通过、日常运行却提示“整理模型不可用”，请查看控制台给出的原因；这不等于 LLM Wiki 的模型配置失败，见[常见问题](#llm-wiki-提示不可用或有待审核怎么办)。
+
+## 从 v0.2/v0.3 升级
+
+重新运行安装命令升级。原来用轻量引擎的，模型配置方式不变。原来用旧 LLM Wiki 引擎的，升级后会检查新的应用和项目结构；没有安装应用时先提示安装，旧知识库不符合新结构时会看到“知识库位置还不是 LLM Wiki 项目”等提示。**升级保留旧知识库文件，不自动把它转换成新项目，也不自动重新整理旧内容。**
+
+可以在 LLM Wiki 里新建或打开项目，让控制台的知识库位置与它一致，再选择新的 LLM Wiki 引擎；也可以改用轻量引擎。两种引擎的目录和记录不同，切换不会把旧页面自动转换或合并。换位置前先保留旧库；旧目录带 `.xhs-wiki/` 标记时，向导会迁移轻量引擎生成的内容，因此会拒绝非空目标。遇到这个提示不要清空已有 LLM Wiki 项目，先保留原文件并反馈问题。
+
+旧无窗口后台已停用，不再下载、启动或维护。确认旧版运行已结束后，可手动删除它原先的程序目录 `~/Library/Application Support/xhs-wiki/vendor/llm-wiki-headless-2.0.6-2-aarch64-apple-darwin/`；v0.2.0 安装的更早一版是 `~/Library/Application Support/xhs-wiki/vendor/llm-wiki-headless-2.0.6-1-aarch64-apple-darwin/`。只删对应旧程序目录，保留知识库和程序目录里的其他文件；使用自定义程序位置时，以自己的程序目录为根。
+
+v0.2.1 曾保证“整理出的页面固定用简体中文写”，通过 `LLM_WIKI_CONTENT_LANGUAGE=zh-CN` 传给旧后台。**这个保证不适用于 v0.4.0 的 LLM Wiki 引擎**：xhs-wiki 不再传这项设置，也不修改 LLM Wiki 的模型配置或项目规则；页面语言由你在 LLM Wiki 里的规则和模型决定。
 
 ## 视频转文字（本机语音转写）
 
@@ -440,7 +467,7 @@ API Key 保存在 **macOS 钥匙串**（系统保存凭据的地方），不写�
 
 ### 收藏夹翻不到、搜不到，用它怎么找？
 
-在 Claude Code（或装了 Skill 的其他 AI 工具）里直接问，比如“查一下我的收藏里有没有……”。Skill 会先读索引，再查主题页和来源页，回答附出处。不用 AI 工具时，可以用 Obsidian 打开知识库文件夹，从 `索引.md` 按主题往下翻，或者用编辑器的全文搜索：视频里讲的话、图片上的字都已经转成文字，也能搜到。
+在 Claude Code（或装了 Skill 的其他 AI 工具）里直接问，比如“查一下我的收藏里有没有……”。Skill 会先读索引，再查主题页和来源页，回答附出处。不用 AI 工具时，可以用 Obsidian 打开知识库文件夹，从轻量引擎的 `索引.md` 或 LLM Wiki 的 `wiki/index.md` 按主题往下翻，或者用编辑器的全文搜索：视频里讲的话、图片上的字都已经转成文字，也能搜到。
 
 ### 收藏的视频能转成文字吗？要联网吗？
 
@@ -460,7 +487,7 @@ API Key 保存在 **macOS 钥匙串**（系统保存凭据的地方），不写�
 
 ### 能把小红书收藏导出吗？导出的是什么？
 
-它不是清单导出工具，产出的是整理好的 Markdown 知识库：每条收藏一页来源页，保留文字和出处；同一主题的收藏汇总成主题页；再加一份 `索引.md`。原图和原视频在核验通过后默认会删除，只留文字。
+它不是清单导出工具，产出的是整理好的 Markdown 知识库：来源页保留文字和出处，主题页归纳相关内容。轻量引擎的入口是 `索引.md`，LLM Wiki 引擎是 `wiki/index.md`。原图和原视频在核验通过后默认会删除，只留文字。
 
 ### 原帖链接打不开？
 
@@ -474,7 +501,7 @@ API Key 保存在 **macOS 钥匙串**（系统保存凭据的地方），不写�
 
 ### 支持 Windows、Linux 或手机吗？
 
-不支持。目前只支持 macOS 13 或更新版本（Apple 芯片和 Intel）；可选的 LLM Wiki 引擎只支持 Apple 芯片。
+不支持。目前只支持 macOS 13 或更新版本；轻量引擎和 LLM Wiki 引擎都支持 Apple 芯片和 Intel。
 
 ### 组件或语音模型下载失败了怎么办？
 
@@ -514,15 +541,21 @@ API Key 保存在 **macOS 钥匙串**（系统保存凭据的地方），不写�
 
 ### 怎样更换整理模型？
 
-在日常页“引擎和整理模型”里直接修改模型名，再点“保存引擎和模型”。新设置只影响之后整理的内容。
+**LLM Wiki 引擎：** 在 LLM Wiki 的设置 → LLM Models 修改，并核对 Ingest model 选的是新提供方。xhs-wiki 的日常页会显示这条指引。
 
-要换提供方、换成 API 方式、改接口地址或密钥、改知识库位置时，点“重新设置”，重新走一遍向导。已整理的内容不会删除；有运行在进行时，要等当前运行结束后再点。改知识库位置时，本工具生成的内容会搬到新位置（新位置要是空文件夹或还不存在），原文件夹里你自己放的其他文件不会动。
+**轻量引擎：** 在日常页“引擎和整理模型”里修改模型名，再点“保存引擎和模型”。新设置只影响之后整理的内容。
 
-### LLM Wiki 下载失败、显示不可用，或要求确认改动，怎么办？
+轻量引擎要换提供方、API 地址或密钥时，点“重新设置”重走向导；LLM Wiki 的这些设置直接在应用里改。更换知识库位置也走向导，先等当前运行结束。只有旧库带 `.xhs-wiki/` 标记时才会搬迁轻量引擎生成的内容，并要求目标为空；自己的其他文件保留。LLM Wiki 项目不会由这套规则自动转换或搬迁，选择项目与旧库保留方式见[升级说明](#从-v02v03-升级)。
 
-下载失败时，先按卡片上的中文原因检查网络或磁盘，再点同一张卡片重试；支持断点续传，校验失败不会使用坏文件。未下载完成时点击“下一步”只会提示等待，不会保存 LLM Wiki 引擎。Intel Mac 请用轻量引擎；提示缺少命令时，可以先点“下一步”选择本机已经安装的 Claude Code 或 Codex（两者都没有则先安装并登录）；保存提供方后会重新检查，检查通过才会保存引擎并继续；提示桌面版正在运行时，先关闭桌面版再点卡片检查。
+### LLM Wiki 提示不可用，或有待审核，怎么办？
 
-出现待确认改动时，先等本轮自动整理停止，再用桌面版打开同一个项目审阅；接受或拒绝后关闭桌面版，回控制台继续，不要同时运行桌面版和自动整理。更多说明见[两种知识库引擎](#两种知识库引擎)。
+- **找不到应用或版本过低：** 自行安装 LLM Wiki 0.6.13 或更新版本，然后点“重新检查”；xhs-wiki 不代为下载。
+- **项目结构不对：** 在 LLM Wiki 里新建或打开项目，再核对控制台里的知识库位置。升级用户另见[升级说明](#从-v02v03-升级)。
+- **“LLM Wiki 打开的不是你的知识库”：** 在应用里打开正确的项目，再回控制台检查；整理时不要切到其他项目。
+- **模型未配置或整理失败：** 在 LLM Wiki 的设置 → LLM Models 核对提供方、模型、密钥及 Ingest model；Claude 5 参数被拒时按[自定义提供方步骤](#两种知识库引擎)处理。失败详情在 LLM Wiki 的任务队列里，控制台显示的是原因代码。
+- **有“待审核”建议：** 在 LLM Wiki 的审核页处理，不用退出应用，也不影响继续整理。
+
+“测试”按钮最长等 5 分钟；常规运行等待一批整理结果，超时仍没完成的笔记保留待核对状态，下一轮继续检查，不会仅凭超时删除原件。
 
 ### 怎样更换语音模型？
 
@@ -546,7 +579,7 @@ bash uninstall.sh
 
 如需连知识库一起清理，运行 `bash uninstall.sh --yes --purge-kb`；用一条命令安装、手边没有仓库文件的，写成 `curl -fsSL https://raw.githubusercontent.com/tyr1105/xhs-wiki/main/uninstall.sh | bash -s -- --yes --purge-kb`。两个参数必须同时带：只带 `--purge-kb` 会直接报错，不删除任何东西；`--yes` 表示跳过确认、直接执行。清理只针对带 `.xhs-wiki/` 标记的知识库，只删本工具生成的内容：`索引.md`、`暂缓.md`、`.xhs-wiki/`，以及**整个** `主题/` 和 `来源/` 文件夹，你放进这两个文件夹里的文件也会一起删掉；知识库文件夹里其他位置的文件会保留，文件夹清空了才删除它本身。想先核对范围，运行 `bash uninstall.sh --dry-run --yes --purge-kb`（远程命令写成 `… | bash -s -- --dry-run --yes --purge-kb`），只打印、不删除。
 
-脚本不删除 macOS 钥匙串中的 API Key，也不卸载 Chrome 和 uv。uv 下载的 Python 3.12 运行环境（如果有）和 uv 的下载缓存也会留着，分别在 `~/.local/share/uv` 和 `~/.cache/uv` 下；想腾出缓存占的空间，可以运行 `uv cache clean`（会清空 uv 的全部缓存）。由脚本安装 uv 时加进终端启动文件的那行 PATH 设置，卸载也不会撤销。如果你曾用 `xhs-wiki serve --port …` 在别的端口手动运行过服务，卸载前先在那个终端窗口按 Control + C 停掉它。
+脚本不删除轻量引擎保存在 macOS 钥匙串中的 API Key，也不卸载 Chrome、uv 或你单独安装的 LLM Wiki 应用；LLM Wiki 的 `app-state.json` 设置和密钥也会保留。uv 下载的 Python 3.12 运行环境（如果有）和 uv 的下载缓存也会留着，分别在 `~/.local/share/uv` 和 `~/.cache/uv` 下；想腾出缓存占的空间，可以运行 `uv cache clean`（会清空 uv 的全部缓存）。由脚本安装 uv 时加进终端启动文件的那行 PATH 设置，卸载也不会撤销。如果你曾用 `xhs-wiki serve --port …` 在别的端口手动运行过服务，卸载前先在那个终端窗口按 Control + C 停掉它。
 
 ## 为什么做这个
 
@@ -558,7 +591,7 @@ bash uninstall.sh
 
 - **现在可以用：** 一条命令安装（不需要 Homebrew、git、ffmpeg；国内网络可加 `--mirror cn`）、控制台 6 步向导、每天定时跟进新收藏、本机识别图片文字和转写视频、四种整理模型、轻量 Markdown 引擎、查询 Skill、原件核验后清理。
 - **多个 AI 工具都能提问（v0.3.0 起）：** 查询 Skill 除了 Claude Code，还能勾选装进腾讯 WorkBuddy、CodeBuddy，字节 Trae，阿里 Qoder、Qoder CN（原通义灵码，IDE 和命令行版），AWS Kiro，Google Antigravity，Cline，以及 Codex、Cursor、Gemini CLI、GitHub Copilot、OpenClaw、Kimi、Qwen Code 等共用的目录；只碰本工具写的那份，卸载时一并清理。
-- **LLM Wiki 引擎可用（v0.2.0 起）：** 向导按需下载、校验并配置无窗口后台（仅 Apple 芯片，整理模型仅支持 Claude Code 和 Codex），已在真机上跑通导入、Update Wiki、轻量检查和确认；v0.2.1 起整理出的页面固定用简体中文。
+- **LLM Wiki 引擎（v0.4.0 起）：** 对接用户自行安装的 nashsu/llm_wiki 0.6.13 或更新版本，模型在应用里选，支持 API 和命令行；通过来源文件和整理记录交接，待审核建议不阻塞整理。应用文件自动整理已有虚构笔记验证；xhs-wiki 的后台启动、向导测试与完整运行链路仍需真机联调。
 - **目前的限制：** 只支持 macOS 13 或更新版本，Intel 机型和 macOS 13 还没有真机验证（Intel 的自动测试已经通过）；开源版完整跑通过的是导入最近 20 条，几百条以上的大批量导入还没有完整实测过；控制台只有中文界面；查询 Skill 只在 Claude Code 和 Codex 命令行里实测过，WorkBuddy 等其他工具按官方文档支持，还没实测；知识库里的原帖链接在电脑浏览器里打不开（见[原帖链接打不开？](#原帖链接打不开)）。
 
 每个版本改了什么，见 [CHANGELOG.md](CHANGELOG.md)。
@@ -579,9 +612,9 @@ bash uninstall.sh
 
 ## 许可证与致谢
 
-项目采用 **GPL-3.0-or-later**，即 GPL 第 3 版或之后的版本，全文见 [LICENSE](LICENSE)。采用这一许可证的原因是项目使用了 **XHS-Downloader（GPL-3.0）**。仓库里少量来自其他开源项目的内容及其许可证，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+项目采用 **GPL-3.0-or-later**，即 GPL 第 3 版或之后的版本，全文见 [LICENSE](LICENSE)。采用这一许可证的原因是项目使用了 **XHS-Downloader（GPL-3.0）**。使用的第三方组件及其分发边界，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-感谢以下组件和模型。下载来源与版本以 [assets_manifest.json](src/xhs_wiki/assets_manifest.json) 为准；直接依赖及版本见 [pyproject.toml](pyproject.toml)（PyAV 为版本范围，其余为固定版本）。
+感谢以下组件和模型。由 xhs-wiki 下载的组件和模型，其来源与版本以 [assets_manifest.json](src/xhs_wiki/assets_manifest.json) 为准；直接依赖及版本见 [pyproject.toml](pyproject.toml)（PyAV 为版本范围，其余为固定版本）。
 
 <details>
 <summary>用到的组件和模型（来源与许可证）</summary>
@@ -600,7 +633,7 @@ bash uninstall.sh
 | Whisper large-v3-turbo 的 CTranslate2 转换权重 | [dropbox-dash/faster-whisper-large-v3-turbo](https://huggingface.co/dropbox-dash/faster-whisper-large-v3-turbo)；原始模型 [openai/whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo) | 转换权重与原始模型均为 MIT |
 | SenseVoice int8 权重 | [sherpa-onnx 模型发布资源](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models) | [FunASR Model License v1.1](https://github.com/modelscope/FunASR/blob/main/MODEL_LICENSE)：可以免费使用、修改和分享，须注明来源并保留模型名。本项目不分发权重，由用户的机器从 sherpa-onnx 的发布页下载 |
 | Silero VAD 语音检测权重 | [snakers4/silero-vad](https://github.com/snakers4/silero-vad) | MIT |
-| LLM Wiki 无窗口后台，可选引擎 | [tyr1105/llm-wiki-desktop 的 headless 分支](https://github.com/tyr1105/llm-wiki-desktop/tree/headless)，基于 [StoneLL1/llm-wiki-desktop](https://github.com/StoneLL1/llm-wiki-desktop) v2.0.6 | Apache-2.0，见 [第三方声明](THIRD_PARTY_NOTICES.md) |
+| LLM Wiki 桌面应用，可选引擎 | [nashsu/llm_wiki](https://github.com/nashsu/llm_wiki)，0.6.13 或更新版本，由用户自行安装 | GPL-3.0；本项目不分发其任何文件，见[第三方声明](THIRD_PARTY_NOTICES.md) |
 | uv，安装时准备环境 | [Astral 官方安装渠道](https://astral.sh/uv/0.12.13/install.sh) | 以所安装发行包的许可为准，本仓库未收录 |
 
 库的许可证不等于模型权重的许可证。上表 Python 库的许可证来自本地已安装版本的声明；模型权重许可证已单独核实。

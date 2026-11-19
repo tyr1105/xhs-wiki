@@ -1,24 +1,14 @@
 # 第三方声明 / Third-Party Notices
 
-xhs-wiki 本身采用 [GPL-3.0-or-later](LICENSE) 许可证。仓库里包含一小段来自其他开源项目的内容，按各自的许可证使用，具体如下。
+xhs-wiki 本身采用 [GPL-3.0-or-later](LICENSE) 许可证。本页说明可选的 LLM Wiki 应用和运行时下载组件的来源与许可证；本项目的许可证不替代它们各自的许可证。
 
-## LLM Wiki Desktop 的项目模板文字
+## LLM Wiki 应用（用户自行安装）
 
-- **来源**：[StoneLL1/llm-wiki-desktop](https://github.com/StoneLL1/llm-wiki-desktop)，提交 `749e213`
-  - `src-tauri/templates/projects/general/purpose.md`
-  - `src-tauri/templates/projects/general/schema.md`
-  - `src-tauri/src/services/project_service.rs` 里的 starter 文本
-- **在本仓库的位置**：`src/xhs_wiki/engines/llmwiki/project.py` 中的 `PURPOSE_MD`、`SCHEMA_MD`，以及 `_starter_index`、`_starter_log`、`_starter_overview` 生成的文字。
-- **版权**：Copyright 2026 StoneLL1 and the LLM Wiki Desktop contributors
-- **许可证**：Apache License 2.0，全文见 [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt)。
-- **改动**：没有修改，原样保留，以便 LLM Wiki 后端识别项目结构。
-
-## LLM Wiki 无窗口后台
-
-- **源码与构建**：[tyr1105/llm-wiki-desktop 的 headless 分支](https://github.com/tyr1105/llm-wiki-desktop/tree/headless)，基于 [StoneLL1/llm-wiki-desktop](https://github.com/StoneLL1/llm-wiki-desktop) v2.0.6；Apple 芯片的发布附件由 GitHub Actions 在干净构建机上编译。
-- **许可证**：Apache License 2.0。后台不随本仓库分发，用户选用 LLM Wiki 引擎后从该分支仓库的 GitHub Release 下载；压缩包和解压后的程序本体按资源清单分别校验 SHA-256。
-- **上游改动**：增加无窗口 `--serve-api --headless` 接口、长上下文控制和固定整理页面语言的环境变量，以便 xhs-wiki 在本机调用导入、整理与审阅流程；完整改动以分支源码为准。
-- **随包声明**：解压目录中的 `LICENSE`、`NOTICE`、`HEADLESS.md` 原样保留，包括上游版权与归属信息；本项目的 GPL-3.0-or-later 声明不替代后台自身的 Apache-2.0 许可证。
+- **来源**：[nashsu/llm_wiki](https://github.com/nashsu/llm_wiki)。
+- **许可证**：GPL-3.0，见[上游许可证](https://github.com/nashsu/llm_wiki/blob/main/LICENSE)。
+- **安装方式**：用户自行从[上游发布页](https://github.com/nashsu/llm_wiki/releases)安装 0.6.13 或更新版本；xhs-wiki 不代为下载、安装或更新。
+- **分发范围**：本项目不分发 LLM Wiki 的任何文件，包括应用、源码、项目模板和配置；知识库项目由用户在 LLM Wiki 中创建或打开。
+- **对接方式**：xhs-wiki 写入项目的来源 Markdown 文件，读取应用的整理记录与状态，不修改 LLM Wiki 的程序或配置内容；详见[技术设计 §6.2](docs/architecture.md#62-llm-wiki-引擎-enginesllmwiki_app进阶)。
 
 ## 运行时下载、不随仓库分发的组件
 
@@ -26,7 +16,6 @@ xhs-wiki 本身采用 [GPL-3.0-or-later](LICENSE) 许可证。仓库里包含一
 
 | 组件 | 来源 | 许可证 |
 |---|---|---|
-| LLM Wiki 无窗口后台（基于上游 v2.0.6） | [tyr1105/llm-wiki-desktop headless](https://github.com/tyr1105/llm-wiki-desktop/tree/headless) | Apache-2.0；随包保留 LICENSE、NOTICE 和 HEADLESS.md |
 | XHS-Downloader 2.8 | [JoeanAmier/XHS-Downloader](https://github.com/JoeanAmier/XHS-Downloader) | GPL-3.0 |
 | Whisper large-v3-turbo（CTranslate2 转换版权重） | [dropbox-dash/faster-whisper-large-v3-turbo](https://huggingface.co/dropbox-dash/faster-whisper-large-v3-turbo)，原始模型 [openai/whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo) | MIT |
 | SenseVoice int8 权重 | [sherpa-onnx 模型发布页](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models)，原始模型 FunAudioLLM/SenseVoice | [FunASR Model License v1.1](https://github.com/modelscope/FunASR/blob/main/MODEL_LICENSE)（可免费使用、修改和分享，须注明来源并保留模型名） |

@@ -16,7 +16,7 @@ LaunchAgent ── xhs-wiki serve（守护进程：控制台 HTTP + 定时器 + 
                  └─ xhs-wiki login（扫码登录，带窗口）
 ```
 
-- **语言和运行环境**：Python 3.12，由 `uv` 管理；只支持 macOS（Apple 芯片和 Intel 都支持；LLM Wiki 引擎只支持 Apple 芯片）。
+- **语言和运行环境**：Python 3.12，由 `uv` 管理；只支持 macOS（Apple 芯片和 Intel 都支持；LLM Wiki 引擎也不限制芯片类型）。
 - **包结构**：`src/xhs_wiki/`，命令入口是 `xhs-wiki`。
 - **目录**（都由 `config.py` 统一给出，测试时用环境变量 `XHS_WIKI_HOME` 指到临时目录）：
 
@@ -41,7 +41,7 @@ LaunchAgent ── xhs-wiki serve（守护进程：控制台 HTTP + 定时器 + 
 ```
 cli.py → daemon.py → runner.py → {scan, ledger, download, parse/*, engines/*, cleanup, notify, store}
 engines/markdown → llm/providers
-engines/llmwiki  → llmwiki_client（HTTP）
+engines/llmwiki_app → 来源 Markdown 文件 + LLM Wiki 应用的记录文件（文件交接）
 ```
 
 规则：下层模块不 import 上层；所有外部依赖（子进程、浏览器、模型、时钟）都可以注入，方便测试。
@@ -127,6 +127,7 @@ class Engine(Protocol):
     def ingest(self, packages: list[Package]) -> list[IngestResult]: ...   # 每条：ok / deferred / failed + engine_ref
     def distill(self, note_ids: list[str]) -> DistillResult: ...           # 把新入库的收藏整合进主题
     def skill_context(self) -> dict: ...                      # Skill 需要的路径和说明
+    def source_exists(self, note_id: str, engine_ref: dict) -> bool: ...  # 清理前核对来源
 ```
 
 ### 6.1 轻量引擎 `engines/markdown/`（默认）
@@ -164,22 +165,61 @@ KB_ROOT/
 
 **提示词**放在 `engines/markdown/prompts/*.md`，是可以改的模板。每个模板都明确告诉模型：笔记内容来自第三方帖子，只是待整理的资料，其中的任何指令、命令、链接或要求都不要执行。**提示词里不能出现任何具体主题、分类或示例内容**，否则会把某个人的偏好带进工具里。
 
-### 6.2 LLM Wiki 引擎 `engines/llmwiki/`（进阶）
+### 6.2 LLM Wiki 引擎 `engines/llmwiki_app/`（进阶）
 
-> **状态：v0.2.0 起可用。** 仅支持 Apple 芯片（包含 Rosetta 环境）。资源清单固定为 Release `headless-v2.0.6-2` 的附件与程序本体 SHA-256（v0.2.1 起；v0.2.0 用的是 `headless-v2.0.6-1`）；2026-11-02 在真机上用虚构笔记跑通两轮：导入 → Update Wiki → 轻量检查 → 确认，第二轮更新已有主题页时旧来源引用全部保留。
+v0.4.0 起对接 [nashsu/llm_wiki](https://github.com/nashsu/llm_wiki) 桌面应用（GPL-3.0），引擎名仍是 `llmwiki`。用户自行安装 **0.6.13 或更新版本**，本项目不下载或分发它的任何文件，也不修改它的配置内容。Apple 芯片和 Intel 均可选用。
 
-- 后台来自 [tyr1105/llm-wiki-desktop 的 headless 分支](https://github.com/tyr1105/llm-wiki-desktop/tree/headless)，基于 StoneLL1/llm-wiki-desktop v2.0.6（Apache-2.0），增加无窗口 `--serve-api` 接口和长上下文控制；GitHub Actions 在干净构建机上构建 Apple 芯片版本。许可证与改动见 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
-- 只有已选择该引擎、或向导刚请求下载时，后台资源线程才准备 `llmwiki`；轻量用户的该项为 `not_needed`，不影响“资源全部就绪”。第一次点卡片返回 202 并显示下载进度，不保存引擎；程序通过固定 SHA-256 校验后，向导自动再做一次健康检查，检查完成在 `finally` 里关闭后台，健康才保存选择。
-- 资源下载复用系统 curl 和 `fetch()`：断点续传、大小与压缩包 SHA-256 校验、校验失败完整重下一次；解压到临时目录，再核对程序本体 SHA-256，设置 0755 后整体原子替换到 `APP_HOME/vendor/<extract_dir>/`。守护进程或 CLI 将程序绝对路径自动写入 `llmwiki_binary`。包内 LICENSE、NOTICE、HEADLESS.md 保留；不使用会添加隔离标记的下载方式。
-- 后台启动前在 `APP_HOME/llmwiki-bin/` 生成 `claude` / `codex` 包装脚本，PATH 优先查这里；只要求当前提供方对应的命令存在，内容未变不重写。HOME 和 USER 取当前 UID 的系统账户记录 `pwd.getpwuid(os.getuid())`，不继承可被覆盖的环境值。路径与 `model.conf` 的模型值用 `shlex.quote` 引用；模型名仅允许字母、数字和 `._:-[]`，最长 100 字符，空串表示默认模型。
-- 生成 claude 脚本时复用轻量提供方的 `--help` 探测，分别确认 `--safe-mode` 和 `--no-session-persistence` 的支持情况；只在 `--print` / `-p` 调用中追加受支持且原参数没有的选项，避免重复后台已经传入的参数。前者屏蔽个人的 CLAUDE.md、Skill 和插件，后者不保存本次会话。健康检查、日常运行通过同一个公共工厂创建引擎。
-- 适配层把 `package.md` 作为 Source 导入，按 5 条或 80KB 一组调用 Update Wiki，再做轻量检查后确认：只要丢了原有的来源引用，或引用了未登记的来源，就驳回；改动了 10 个及以上已有页面、或有删除和覆盖时，交给用户决定。
-- 真机联调确认的后台行为：
-  - 导入条目本身不带来源编号；提交任务结果的 `result.reference.completion.newSources`（以及 `updatedSources`）列出 `sourceId`、`versionId`、`wikiPath`、`contentHash`，`contentHash` 就是导入文件的 SHA-256，适配层按它认出自己这一条，再用 `GET /sources` 核对。来源页落在 `wiki/sources/local/<文件名>.md`，原文在 `raw/sources/<sourceId>/<versionId>/`。
-  - 后台不往知识库的 `main` 分支提交：每次整理的输入、确认前和确认后快照存为 `refs/llm-wiki/operations/<任务编号>/{baseline,before,planned,after}`，改动直接写在工作区，所以 `git status` 显示未提交改动是正常状态，不影响下一轮。
-  - 后台默认按 LLM Wiki 全局设置里的界面语言写页面（`~/.config/llm-wiki-desktop/settings.json` 的 `language`，默认 `en`），知识库没有单独的语言设置。后台 2.0.6-2 起支持环境变量 `LLM_WIKI_CONTENT_LANGUAGE`（只认 `zh-CN` 和 `en`，有效时优先于界面语言，决定规划、逐页生成和 `wiki/log.md` 摘要的语言）。`backend.py` 启动后台时固定传 `LLM_WIKI_CONTENT_LANGUAGE=zh-CN`，子进程环境从零构造、不继承用户环境里的同名变量，所以页面固定是简体中文，与桌面版界面语言无关，也不改桌面版的设置。
-  - 无窗口模式仍会在菜单栏放一个 LLM Wiki 图标（上游行为）。
-- 整理模型只支持已在本机登录的 Claude Code 或 Codex（由 LLM Wiki 后台调用）；提供方保存和向导结束均校验组合。自动整理期间必须关闭桌面版；待用户审阅时暂停整理，用户等后台关闭后在桌面版打开同一项目接受或拒绝，再关闭桌面版并继续。
+**文件交接**就是：xhs-wiki 把解析后的文字放进项目，LLM Wiki 应用自动整理，xhs-wiki 再读应用的记录确认结果。模型、接口地址和密钥由用户在 LLM Wiki 的设置 → LLM Models 中配置；这个引擎不调用 `llm/` 的提供方，不直接请求模型。
+
+| 文件或目录 | xhs-wiki 的操作 | 用途与路径口径 |
+|---|---|---|
+| `KB_ROOT/raw/sources/xhs/<note_id>.md` | 写入 | 来源文字；文件头包含 `title`、`author`、非空时的 `published_at`、不带签名的 `url`、`note_id`、`source`，后接 `package_md` |
+| `KB_ROOT/.llm-wiki/ingest-cache.json` | 只读 | 完成记录：`entries` 的键相对 `raw/sources/`，例如 `xhs/<note_id>.md`；条目含 `hash`、`filesWritten` |
+| `KB_ROOT/.llm-wiki/ingest-queue.json` | 只读 | 整理任务数组；`sourcePath` 相对项目根，例如 `raw/sources/xhs/<note_id>.md`；读取 `status`、`retryCount`、`error` |
+| `KB_ROOT/.llm-wiki/review.json` | 只读 | 待审核建议数组，控制台统计 `resolved` 为假或缺失的条目；读不出时隐藏这项，不阻止整理 |
+| `~/Library/Application Support/com.llmwiki.app/app-state.json` | 只读内容 | `lastProject.path` 是应用当前项目；`taskModelRouting.ingestPresetId`（空时用 `activePresetId`）选择 `providerConfigs` 中的整理提供方 |
+| `KB_ROOT/wiki/` | 读取生成结果 | 索引 `wiki/index.md`，来源 `wiki/sources/`，知识页见下文；内容由 LLM Wiki 维护 |
+
+`app-state.json` 可能含**明文 API 密钥**。解析状态文件后只判断 `apiKey` 是否为空，不把值写进日志、返回给页面或用来调用模型。控制台的「收紧为仅本人可读」按钮是唯一权限修改入口：经用户点击后只对该文件执行 `chmod 600`，不修改文件内容，也不改其他文件。权限提醒按 `mode & 0o077` 判断，含任意组或其他用户权限位就提示；`doctor` 只提示，不修改权限。
+
+**运行与完成判定：**
+
+1. `health_checks()` / `health()` 不启动应用、不调用模型。按顺序检查：`/Applications/LLM Wiki.app` 或 `~/Applications/LLM Wiki.app` 存在；版本不低于 0.6.13；项目有 `purpose.md`、`schema.md`、`.llm-wiki`（当前实现只检查存在性）；整理提供方配置满足要求。`health()` 返回首个失败原因；`doctor` 显示全部检查项。当前打开哪个项目由 `prepare()` 检查。
+2. 提供方检查读取 Ingest model 的预设编号，空时退回当前活跃编号。内置 `claude-code-cli`、`codex-cli`、`ollama-local` 不要求密钥，也不要求 `providerConfigs` 有条目；配置中的 `provider` / `apiMode` 属于 `claude-code`、`codex-cli`、`ollama` 时同样免密钥。自定义提供方（`custom` 或 `custom-` 开头）的 `baseUrl` 主机是 `localhost`、`127.0.0.1` 或 `::1` 时免密钥，其余要求条目存在且 `apiKey` 非空。这是配置检查，不验证模型是否实际可调用、CLI 是否已登录或服务是否可达。
+3. `runner` 在处理阶段开头调用 `prepare()`。通过 `pgrep -x llm-wiki` 检查进程；未运行时用参数列表执行 `open -g -j -b com.llmwiki.app` 后台启动，最多等待 60 秒，进程出现后再等 10 秒加载项目。随后规范化 `lastProject.path` 并与 `KB_ROOT` 比较，不一致或读不出就停止本轮、登记「待你处理」，不自动切换项目。关掉窗口可以继续整理，退出应用则不能整理；下次运行的处理阶段会再次尝试启动。
+4. `ingest()` 原子写来源：先在同目录写点开头、`.tmp` 结尾的临时文件，完成后 `os.replace`；字符串用 JSON 双引号转义为合法的 YAML 字符串，避免标题里的引号、换行破坏文件头。已有文件内容相同时不重写。台账引用为 `engine_ref = {"source": "xhs/<note_id>.md", "sha256": "<内容指纹>"}`。
+5. `distill()` 默认每 5 秒读一次 cache 和 queue。先比对来源文件**当前** SHA-256 与 cache 的 `hash`，再确认 `filesWritten` 是列表且列出的每个路径存在；全部满足才在 `per_note` 中记 `ok`。当前实现允许空 `filesWritten` 列表通过，因此不能把通过检查等同于一定新增了页面。未完成的来源只有在队列对应项 `status=failed` 且 `retryCount>=3` 时才记失败；队列原始错误只用于归类，不直接输出。
+6. 默认总等待时间为条数 × 3 分钟，最少 10 分钟、最多 60 分钟。超时未完成的笔记不写入 `per_note`，由 `runner` 保持 `ingested`，下一轮接着核对。cache/queue 不存在时视为空记录；JSON 损坏或外层形状不识别时按无法判断处理，连续两个轮询周期读不出才在 `errors` 中报告 `llmwiki_record_unreadable`，不据此判成功或删除原件。
+7. `source_exists()` 在清理前再次核对当前来源文件指纹、cache 与 `filesWritten`，不单凭 `engine_ref.sha256` 或本轮结束状态判断成功。待审核建议独立统计，既不拦截完成判定，也不由 xhs-wiki 自动接受或拒绝。
+
+统计口径：`assigned` 是本批确认完成的条数；`pages_rewritten` 是这些条目的 `filesWritten` 长度之和，不能区分新建和更新；`new_topics` 是其中位于 `wiki/concepts/`、`wiki/entities/`、`wiki/synthesis/`、`wiki/comparisons/`、`wiki/queries/` 的去重路径，表示写过的页面，不保证都是新主题。控制台的主题总数只数前四个知识目录的 `.md` 文件；查询 Skill 的主题说明也排除 `wiki/queries/`。
+
+**原因代码**（以 `engine.py`、`daemon.py` 和控制台文案为准）：
+
+| 原因代码 | 触发条件 | 处理方式 |
+|---|---|---|
+| `llmwiki_app_missing` | 两个应用目录都找不到应用，或后台启动后进程没有在期限内出现 | 安装 0.6.13 或更新版本，或手动打开应用后重试 |
+| `llmwiki_app_too_old` | 版本低于最低要求，或版本读不出 | 更新应用；运行预检将此原因放在通用 `engine_unavailable` 事项中 |
+| `llmwiki_project_invalid` | 项目缺少 `purpose.md`、`schema.md`、`.llm-wiki` 中任一项 | 在 LLM Wiki 中新建或打开项目，选对知识库位置 |
+| `llmwiki_model_missing` | 状态读不出、没有选中的预设，或应有密钥的配置缺少密钥 | 在 LLM Wiki 设置 → LLM Models 配好提供方并选为 Ingest model |
+| `llmwiki_wrong_project` | `prepare()` 读不到当前项目，或它与知识库路径不同 | 在 LLM Wiki 中打开该知识库；xhs-wiki 停止本轮 |
+| `llmwiki_model_param_rejected` | 队列最终失败原文包含 `temperature` | 换模型或使用自定义提供方；Claude 5 的具体设置见 README |
+| `llmwiki_auth_failed` | 原文包含 `401`、`authentication` 或 `invalid x-api-key` | 在 LLM Wiki 中更新密钥 |
+| `llmwiki_quota` | 原文包含 `credit`、`balance` 或 `billing` | 到模型提供方处理余额或计费限制 |
+| `llmwiki_model_not_found` | 原文同时包含 `model` 与 `not_found` | 在 LLM Wiki 中核对模型名 |
+| `llmwiki_ingest_failed` | 其他队列最终失败 | 查看 LLM Wiki 任务队列 |
+| `llmwiki_record_unreadable` | cache 或 queue 连续两个轮询周期无法读取或外层形状不识别 | 保留待处理状态与原件，核对应用版本和记录格式 |
+| `llmwiki_state_missing` | 点击收紧权限时找不到状态文件 | 先打开一次 LLM Wiki |
+| `llmwiki_chmod_failed` | 收紧权限操作抛出文件系统错误 | 稍后重试；不输出系统错误原文 |
+| `llmwiki_selftest_timeout` | 向导测试最多等待 5 分钟后没有该示例的完成结果，或等待过程抛错 | 确认应用和模型可用后再试 |
+
+队列错误按表中 `model_param_rejected` → `auth_failed` → `quota` → `model_not_found` → `ingest_failed` 的顺序匹配，小写比较、先匹配先得。应用缺失、项目无效、模型缺失、项目不符四类有独立的运行事项；其他健康检查失败走 `engine_unavailable`。
+
+**控制台接口：** 第 2 步通过 `POST /api/setup/engine` 调 `health()`，健康后保存引擎；只有 `llmwiki_model_missing` 允许先进入第 3 步配模型，但该次不会保存引擎。第 3 步 `GET /api/setup/llmwiki-model` 返回提供方、模型名、密钥满足与否、当前项目是否正确及文件权限摘要，不启动应用。模型摘要、收紧权限和测试接口都要求已保存的引擎是 `llmwiki`，否则返回 `engine_invalid`。
+
+「测试」调用 `POST /api/setup/test-llmwiki`：没有 `confirm_cost=true` 则返回 `cost_confirmation_required`；有确认后先 `prepare()`，再写入虚构的 `raw/sources/xhs/xhs-wiki-selftest.md`，写失败返回 `package_write_failed`；等待至多 5 分钟。结束时删除该示例来源文件；LLM Wiki 检测到来源被删后，会自己删除这条来源生成的页面并移除整理记录（11-19 真机实测，60 秒内完成）。xhs-wiki 不直接删除任何页面。`POST /api/setup/llmwiki-tighten` 只收紧状态文件权限。三个接口沿用控制台的身份校验，两个 POST 也在既有白名单和 CSRF 校验内。
+
+**升级后的调用边界：** 旧引擎的 Claude 包装脚本会检测命令支持的选项，只在 `--print` / `-p` 且原参数没有相应选项时补上 `--safe-mode`、`--no-session-persistence`；旧启动器还会设置 `LLM_WIKI_CONTENT_LANGUAGE=zh-CN`，固定生成页面的语言。v0.4.0 已删除这套包装与启动器，不再施加这些参数或页面语言设置。LLM Wiki 调用模型时的工具权限、会话保存和内容语言由应用及所选提供方负责，不能沿用旧引擎的隔离或固定中文保证。
 
 ## 7. 设置 `settings.json`
 
@@ -188,18 +228,20 @@ KB_ROOT/
  "download_retry_every_days": 7, "profile_url": null, "headless": true, "cleanup_enabled": true,
  "kb_root": "~/XHS-Wiki", "engine": "markdown",
  "llm": {"provider": "claude_code", "model": "claude-haiku-5-5", "base_url": null},
- "asr_model": "whisper", "first_import_limit": 20, "setup_completed": false, "llmwiki_binary": null,
+ "asr_model": "whisper", "first_import_limit": 20, "setup_completed": false,
  "skill_targets": ["claude_code"]}
 ```
 
 - `skill_targets`：查询 Skill 装进哪些 AI 工具（§12 表里的位置名，即 `store.SKILL_TARGETS`），默认只有 Claude Code。接口只接受这些固定名字、不能重复，可以为空列表；只能经 `/api/skill-targets`（向导第 6 步和日常页）修改。读设置文件时会清理：旧设置文件没有这个键、或者值不是列表，读出默认值；不认识的名字（手工改过、从新版本降级回来）和重复项直接去掉——不然整份设置都过不了校验，别的设置也存不进去。
 
 - `first_import_limit`：首次导入范围。整数 N 只在**第一次成功扫描**时生效：当时排在第 N 位以后的旧收藏标记为 `skipped`，之后新收藏的笔记不受限制；`null` 表示全部收藏。改成 `null` 后，之前跳过的旧收藏会在下次运行时重新排队。
-- `llmwiki_binary`：LLM Wiki 后台程序的绝对路径（§6.2），下载并校验完成后由守护进程或 `assets install-llmwiki` 命令自动写入；控制台接口仍不接受这个字段。
+- `llm` 保存轻量引擎的提供方、模型名和地址；LLM Wiki 引擎实际整理使用应用自己的设置（§6.2）。旧设置里的 `llmwiki_binary` 读取时丢弃，不再用于启动应用。`headless` 控制扫描收藏时是否隐藏浏览器窗口，与 LLM Wiki 无关。
 - 控制台日常页的设置接口只能修改定时、每次条数、清理开关、语音模型和模型名；提问用的 AI 工具走专用接口（改完立即同步 Skill）；其余字段只能通过首次设置向导写入。
-- API Key **不进** `settings.json`，存进 macOS 钥匙串：服务名 `xhs-wiki`，账户名为提供方名称。用系统自带的 `security` 命令读写，命令行参数里不出现 Key 本身（通过标准输入传入）。
+- 轻量引擎的 API Key **不进** `settings.json`，存进 macOS 钥匙串：服务名 `xhs-wiki`，账户名为提供方名称。用系统自带的 `security` 命令读写，命令行参数里不出现 Key 本身（通过标准输入传入）。LLM Wiki 自己的 API 密钥以明文保存在其 `app-state.json`，由该应用管理；xhs-wiki 只做存在性检查（§6.2）。
 
 ## 8. 模型调用 `llm/`
+
+以下四种提供方供轻量引擎调用。LLM Wiki 引擎的整理模型由应用自己选择和调用，不使用此表的调用参数或隔离设置；选 LLM Wiki 引擎时，运行预检、完成向导和 doctor 都不检查 xhs-wiki 自己的 `llm` 设置，模型检查由引擎的 `health()`（`llmwiki_model`）负责。
 
 ```python
 class Provider(Protocol):
@@ -228,9 +270,10 @@ for stage in [download, parse, ingest, distill]:
 
 预检项目：
 - 磁盘空间；
-- 所选 provider 的 `check()`（Claude Code 和 Codex 先查登录状态，不消耗用量）；
-- 引擎的 `health()`；
-- 如果用 LLM Wiki 引擎，还要检查桌面版有没有开着。
+- xhs-wiki 设置中所选 provider：Claude Code 和 Codex 调 `check()` 查登录，不消耗用量；API 类只查钥匙串是否有密钥；
+- 引擎的 `health()`；LLM Wiki 的检查内容见 §6.2，不要求关闭应用。
+
+前一项 provider 预检只对轻量引擎执行；LLM Wiki 引擎跳过它，`doctor` 和向导完成接口同样只在轻量引擎下检查 xhs-wiki 自己的模型和钥匙串。LLM Wiki 的后台启动和当前项目核对在扫描之后、下载处理开始前由 `prepare()` 执行。
 
 其他规则：
 - **运行记录**：每次运行结束追加一行到 `runs.jsonl`，包括触发方式、结果、扫描数、新增数、各阶段成功和失败数、清理释放的空间、停止原因。
@@ -243,7 +286,7 @@ for stage in [download, parse, ingest, distill]:
 
 条件：笔记已经 `distilled` 或 `deferred`，还没清理过。删除前做三道核对，任何一道不通过就跳过这条、记下原因、绝不删除：
 
-1. 引擎确认来源已入库（轻量引擎检查来源页是否存在；LLM Wiki 引擎核对来源版本）；
+1. 引擎确认来源已入库（轻量引擎检查来源页是否存在；LLM Wiki 引擎核对当前来源指纹、cache 与 `filesWritten` 中的路径，见 §6.2）；
 2. 解析包还在，且它的 sha256 等于台账里记录的 `package_sha256`；
 3. 要删的每个文件都在解析包的原件清单里、sha256 一致，并且是 `work/<note_id>/media/` 下的普通文件（不是符号链接，解析真实路径后仍在这个目录里）。清单之外的文件一概不碰。
 
@@ -259,13 +302,13 @@ for stage in [download, parse, ingest, distill]:
 - **接口白名单**：日常设置接口只接受定时、条数、清理、语音模型和模型名；知识库位置只能经向导设置，并校验是不是普通的绝对路径目录（不能是程序包、磁盘根目录、主目录本身、"文稿""桌面"这类系统文件夹本身或系统目录，不能含控制字符和格式字符）。
 - **连接限制**：每个连接有 10 秒读写超时，同时处理的连接数有上限，防止同机程序靠空闲连接占满服务。
 - 定时、补跑、追加运行；扫码子进程。
-- **首次向导**：`setup_completed=false` 时显示。依次是知识库位置 → 引擎 → 模型（选择后测试调用）→ 扫码 → 首次导入范围 → 提问用的 AI 工具（§12，默认只勾 Claude Code；日常页也有同一组勾选框）；日常页的"重新设置"可以重走向导。在向导里改知识库位置时，已有内容会移动到新位置：旧目录里只有本工具生成的内容时整个目录移动，还有用户自己的文件时只移动五类生成内容；同一块磁盘上直接改名，跨磁盘时先完整复制并核对、再删除原件。
-- 知识库统计（主题数、来源数、暂缓数）：轻量引擎数 `主题/`、`来源/` 下的文件；LLM Wiki 引擎数 `wiki/` 下整理出的页面（不算 index、log、overview 三个结构页和 `wiki/queries/`）和 `wiki/sources/` 下的来源页；暂缓数两种引擎都取台账。失败笔记单条重试；
+- **首次向导**：`setup_completed=false` 时显示。依次是知识库位置 → 引擎 → 模型（选择后测试调用）→ 扫码 → 首次导入范围 → 提问用的 AI 工具（§12，默认只勾 Claude Code；日常页也有同一组勾选框）；日常页的"重新设置"可以重走向导。在向导里改知识库位置时，只有旧目录带 `.xhs-wiki/` 标记才走现有的搬移流程：旧目录里只有本工具生成的五类内容时整个目录移动，还有其他文件时只移动这五类内容；同一块磁盘上直接改名，跨磁盘时先完整复制并核对、再删除原件。此流程不转换 LLM Wiki 的 `raw/`、`wiki/` 和 `.llm-wiki/` 项目结构。
+- 知识库统计（主题数、来源数、暂缓数）：轻量引擎数 `主题/`、`来源/` 下的文件；LLM Wiki 引擎的主题数是 `wiki/concepts/`、`wiki/entities/`、`wiki/synthesis/`、`wiki/comparisons/` 中直接包含的 `.md` 文件数之和，来源数是 `wiki/sources/` 中直接包含的 `.md` 文件数，不计 `wiki/queries/`；暂缓数两种引擎都取台账。LLM Wiki 待审核数读 `.llm-wiki/review.json`，读取失败时隐藏；这些建议不阻止整理。失败笔记单条重试；
 - "打开知识库文件夹"按钮：用 `/usr/bin/open -R` 在访达里选中知识库目录，不会启动任何程序。
 
 ## 12. Skill `skill/SKILL.md.tmpl`
 
-渲染时填入 `KB_ROOT`、引擎类型，以及当前引擎 `skill_context()` 给出的索引、主题页、来源页位置：轻量引擎是 `索引.md`、`主题/`、`来源/`，LLM Wiki 引擎是 `wiki/index.md`、`wiki/`、`wiki/sources/`。
+渲染时填入 `KB_ROOT`、引擎类型，以及当前引擎 `skill_context()` 给出的索引、主题页、来源页位置：轻量引擎是 `索引.md`、`主题/`、`来源/`，LLM Wiki 引擎的索引是 `wiki/index.md`，来源是 `wiki/sources/`；`topics_dir` 是 `wiki/concepts`，`topic_dirs` 还列出 `wiki/entities`、`wiki/synthesis`、`wiki/comparisons`、`wiki/queries`。渲染查询步骤时排除 `queries`，说明其余四个知识目录。
 
 **装进哪些 AI 工具**：SKILL.md 是开放的 Agent Skills 格式（一个文件夹，放带 `name`、`description` 的 Markdown），各家只是去不同目录找。同一份渲染结果写到设置 `skill_targets` 勾选的位置（`skill.py` 的 `TARGET_ROOTS`）：
 
@@ -316,7 +359,7 @@ for stage in [download, parse, ingest, distill]:
   3. 检查 uv（没有就征求同意后，用官方安装脚本装到用户目录）；
   4. 在 `APP_HOME/venv` 里装好 Python 3.12 和本项目。远程安装直接下载 GitHub 的源码压缩包（`archive/refs/heads/main.tar.gz`），不需要 git；重型依赖只用预编译包（`--only-binary`），让安装器自动选出兼容当前 macOS 版本和芯片的版本；
   5. 启动服务并打开控制台：征得同意后写入 LaunchAgent（写 plist 时把当前的 PATH、代理和镜像设置一起写进去；工作目录和日志不放 `~/Documents`），否则用 nohup 启动临时服务；然后运行 `xhs-wiki open`；
-  6. XHS-Downloader 和语音模型交给服务在后台下载（按固定 SHA-256 核对），脚本不等待；LLM Wiki 无窗口后台仅在选择该引擎时按需下载，也可用 `xhs-wiki assets install-llmwiki` 下载；其压缩包和程序本体分别校验固定 SHA-256，通过后自动配置路径；
+  6. XHS-Downloader 和语音模型交给服务在后台下载（按固定 SHA-256 核对），脚本不等待；LLM Wiki 应用由用户自行安装，xhs-wiki 只检查应用和项目（§6.2）；
   7. 渲染 Skill，写进设置里勾选的位置（默认只有 Claude Code；升级时顺带更新勾选过的其他工具；没检测到 Claude Code 时跳过它的目录）；
   8. 建立命令链接 `~/.local/bin/xhs-wiki`；
   9. 结束提示。
