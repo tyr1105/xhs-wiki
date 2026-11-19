@@ -2173,7 +2173,7 @@ class ServiceHandler(BaseHTTPRequestHandler):
         3. 把固定虚构内容写到 raw/sources/xhs/xhs-wiki-selftest.md
            （原子写，和正常入库同一条路径）；
         4. 按引擎的 distill 规则等最多 5 分钟（timeout_s=300）；
-        5. 无论结果如何都删除示例来源文件；LLM Wiki 已生成的页面**不删**
+        5. 无论结果如何都删除示例来源文件；LLM Wiki 检测到来源被删后，会自己把它生成的页面一并清理（11-19 真机实测），xhs-wiki 不直接删任何页面
            （页面上说明可在 LLM Wiki 里删除）。
 
         返回 {"ok": bool, "reason": 原因代码}；原因代码都进了页面的大
@@ -2212,7 +2212,7 @@ class ServiceHandler(BaseHTTPRequestHandler):
         except Exception:
             note = None
         finally:
-            # 示例来源文件一定删除；LLM Wiki 生成的页面保留。
+            # 示例来源文件一定删除；它生成的页面由 LLM Wiki 自己随之清理，xhs-wiki 不碰页面。
             try:
                 source.unlink(missing_ok=True)
             except OSError:
@@ -2406,8 +2406,7 @@ LLMWIKI_SELFTEST_CONTENT = (
     "# xhs-wiki 测试笔记\n\n"
     "这是一条由 xhs-wiki 的「测试」按钮生成的虚构笔记，用来确认 LLM Wiki "
     "能用你选的模型完成整理。它不包含任何真实内容：测试结束后来源文件会被"
-    "自动删除；整理生成的一个示例来源页会留在 LLM Wiki 里，可以在 LLM Wiki "
-    "中删除它。\n"
+    "自动删除，LLM Wiki 会把它生成的页面一并清理。\n"
 )
 
 

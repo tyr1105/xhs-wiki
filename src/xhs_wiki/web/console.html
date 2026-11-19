@@ -370,7 +370,7 @@ footer{margin-top:22px;color:var(--muted);font-size:12px;display:flex;justify-co
       <div class="warnbox">用 Claude 5 系列模型（如 claude-haiku-5-5）时，不要用内置的「Anthropic (Claude)」选项（会被接口拒绝）。请添加自定义提供方（Add custom provider）：协议选 Anthropic-compat，Endpoint 填 https://api.anthropic.com，模型填 claude-haiku-5-5，再把「Ingest model」选成这个自定义提供方。</div>
       <h2 style="margin-top:16px">检查结果</h2>
       <div class="list" id="w-llmwiki-check"><div class="subtle">还没检查</div></div>
-      <p class="subtle" id="w-llmwiki-testnote" style="margin-top:8px">「测试」会在知识库里放一条虚构示例笔记，由 LLM Wiki 用你选的模型整理一遍；结束后示例来源文件会自动删除，LLM Wiki 里会留下一个示例来源页，可以在 LLM Wiki 里删除。</p>
+      <p class="subtle" id="w-llmwiki-testnote" style="margin-top:8px">「测试」会在知识库里放一条虚构示例笔记，由 LLM Wiki 用你选的模型整理一遍；结束后示例来源文件会自动删除，LLM Wiki 随后会把它整理出的示例页面一并清理，不会留在知识库里。</p>
     </div>
     <!-- 按钮单独一行（white-space:nowrap 保证按钮文字不折行），
          提示结果的文字放到按钮下面独占一行——提示文案可能很长，
@@ -1576,12 +1576,12 @@ $('w-test-llm').addEventListener('click',async()=>{
     }
     /* 服务端最多等 5 分钟（加一点余量），期间禁用按钮防止重复点击。 */
     saveBtn.disabled=true;testBtn.disabled=true;
-    hint.className='hint';hint.textContent='测试中…（最长约 5 分钟；LLM Wiki 里会留下一个示例来源页，可以在 LLM Wiki 里删除）';
+    hint.className='hint';hint.textContent='测试中…（最长约 5 分钟；结束后示例来源和它生成的页面会一并清理）';
     const r=await post('/api/setup/test-llmwiki',{confirm_cost:true},330000);
     saveBtn.disabled=false;testBtn.disabled=false;
     if(r.status===200&&r.data.ok){
       hint.className='hint ok';
-      hint.textContent='整理测试通过 ✓ LLM Wiki 里会留下一个示例来源页，可以在 LLM Wiki 里删除';
+      hint.textContent='整理测试通过 ✓ 示例来源和它生成的页面会一并清理';
     }else{
       hint.className='hint err';
       hint.textContent='整理测试未通过：'+plainCode((r.data&&r.data.reason)||(r.data&&r.data.error)||r.status);

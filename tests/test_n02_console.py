@@ -208,7 +208,7 @@ class TestTestLlmwikiRoute(N02RouteTestBase):
 
     def test_success_writes_and_removes_selftest(self):
         """成功路径：写入固定虚构内容 → distill → 删除示例来源文件；
-        LLM Wiki 已生成的页面绝不删除。"""
+        xhs-wiki 不直接删除 LLM Wiki 生成的页面（页面由 LLM Wiki 随来源删除自行清理）。"""
         engine = self.make_fake_engine()
         page = self.kb / "wiki/sources/example-page.md"
         page.parent.mkdir(parents=True, exist_ok=True)
@@ -221,7 +221,7 @@ class TestTestLlmwikiRoute(N02RouteTestBase):
         self.assertEqual(engine.seen_source_content,
                          daemon.LLMWIKI_SELFTEST_CONTENT)
         self.assertIn("虚构", engine.seen_source_content)
-        # 结束后示例来源文件已删除；应用生成的页面保留。
+        # 结束后示例来源文件已删除；xhs-wiki 不直接删页面（替身环境里页面仍在）。
         self.assertFalse(self.source_path().exists())
         self.assertTrue(page.exists())
 

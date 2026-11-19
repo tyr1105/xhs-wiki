@@ -106,7 +106,7 @@ def test_step3_test_button_flow(page):
     assert "一次很小的模型调用费用" in handler
     assert "llmwikiModelInfo.wrong_project" in handler
     assert "post('/api/setup/test-llmwiki',{confirm_cost:true},330000)" in handler
-    assert "示例来源页" in handler
+    assert "一并清理" in handler
     assert "saveBtn.disabled=true;testBtn.disabled=true" in handler
 
 
