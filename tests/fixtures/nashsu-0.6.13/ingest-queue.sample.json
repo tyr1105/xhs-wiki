@@ -1,0 +1,32 @@
+[
+  {
+    "id": "t1",
+    "projectId": "<uuid>",
+    "sourcePath": "raw/sources/xhs/xhs-test-001.md",
+    "folderContext": "xhs",
+    "status": "failed",
+    "addedAt": 1795054945000,
+    "error": "Analysis failed: HTTP 400: Bad Request — {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"`temperature` is deprecated for this model.\"}}",
+    "retryCount": 3
+  },
+  {
+    "id": "t2",
+    "projectId": "<uuid>",
+    "sourcePath": "raw/sources/xhs/xhs-test-002.md",
+    "folderContext": "xhs",
+    "status": "processing",
+    "addedAt": 1795054946000,
+    "error": null,
+    "retryCount": 0
+  },
+  {
+    "id": "t3",
+    "projectId": "<uuid>",
+    "sourcePath": "raw/sources/xhs/xhs-test-003.md",
+    "folderContext": "xhs",
+    "status": "pending",
+    "addedAt": 1795054947000,
+    "error": null,
+    "retryCount": 0
+  }
+]

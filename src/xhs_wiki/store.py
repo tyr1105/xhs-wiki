@@ -73,7 +73,8 @@ NEEDS_USER_TITLES = {
 # - openai_compatible：任何兼容 OpenAI 接口的服务（DeepSeek、通义千问等）
 LLM_PROVIDERS = ("claude_code", "codex", "anthropic", "openai_compatible")
 
-# 知识库引擎：markdown（轻量引擎，默认）或 llmwiki（LLM Wiki 桌面版）。
+# 知识库引擎：markdown（轻量引擎，默认）或 llmwiki（nashsu/llm_wiki
+# 桌面应用，v0.4.0 起直接对接应用，不再下载后台程序）。
 ENGINES = ("markdown", "llmwiki")
 
 # 语音识别模型：两个候选都允许（取舍见 docs/architecture.md §5）。
@@ -111,9 +112,6 @@ DEFAULT_SETTINGS = {
     # 知识库根目录（轻量引擎的输出位置；用户可在控制台改）。
     "kb_root": "~/XHS-Wiki",
     "engine": "markdown",
-    # LLM Wiki Desktop 可执行文件的绝对路径（LLM Wiki 引擎用；null =
-    # 还没配置，引擎 health() 会报 llmwiki_binary_missing）。
-    "llmwiki_binary": None,
     "llm": {"provider": "claude_code", "model": "claude-haiku-5-5", "base_url": None},
     "asr_model": "whisper",  # 默认 Whisper（取舍见 docs/architecture.md §5）
     # 首次导入最多处理多少条旧收藏（首次可能积累了几千条，先小范围试）。
@@ -133,7 +131,6 @@ EDITABLE_SETTINGS_FIELDS = (
     "cleanup_enabled",
     "kb_root",
     "engine",
-    "llmwiki_binary",
     "llm",
     "asr_model",
     "first_import_limit",
@@ -502,16 +499,6 @@ def validate_settings(value: dict) -> dict:
     if value.get("engine") not in ENGINES:
         raise ValueError("engine_invalid")
 
-    # llmwiki_binary：null（没配置）或绝对路径（以 / 开头的
-    # 非空字符串；~ 之类的写法交给用户自己展开，这里只认绝对路径）。
-    llmwiki_binary = value.get("llmwiki_binary")
-    if llmwiki_binary is not None and (
-        not isinstance(llmwiki_binary, str)
-        or not llmwiki_binary.strip()
-        or not llmwiki_binary.startswith("/")
-    ):
-        raise ValueError("llmwiki_binary_invalid")
-
     # asr_model：只能是两个候选之一。
     if value.get("asr_model") not in ASR_MODELS:
         raise ValueError("asr_model_invalid")
@@ -731,6 +718,13 @@ class ServiceStore:
         # 仍按原规则严格校验请求体。
         if "skill_targets" in settings:
             settings["skill_targets"] = clean_skill_targets(settings["skill_targets"])
+        # 迁移清洗：下面这个键是旧版（≤0.3.x，StoneLL1 后台时代）的
+        # 设置项——后台程序的绝对路径。v0.4.0 起引擎直接对接
+        # nashsu/llm_wiki 桌面应用，这个路径不再使用。读取时忽略并
+        # 丢弃（不报错），下次写盘自然消失——不清洗的话
+        # validate_settings 的 unknown_field 检查会让老用户改任何设置
+        # 都失败。
+        settings.pop("llmwiki_binary", None)  # 旧设置项：读取时丢弃
         # 补齐用的默认值同样先深拷贝：skill_targets 是列表，旧设置文件
         # 没有这个键时，直接用模块级的默认列表，调用方一改就把默认值改坏了。
         return {**json.loads(json.dumps(DEFAULT_SETTINGS)), **settings}

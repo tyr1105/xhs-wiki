@@ -549,6 +549,34 @@ class TestPreflight:
         assert record["result"] == "completed"
         assert rig.provider.check_calls == 0
 
+    def test_llmwiki_skips_own_llm_check(self, tmp_path, monkeypatch):
+        """llmwiki 引擎：claude_code 未登录也不报 llm_unavailable——整理由
+        LLM Wiki 应用自己做，xhs-wiki 的 settings["llm"] 用不到，预检应
+        完全跳过（make_provider / check() / key_exists 都不调用）。"""
+        made = []
+        rig = Rig(tmp_path, monkeypatch, scan_items=fake_items(1),
+                  provider=FakeProvider(ok=False),
+                  settings={"engine": "llmwiki"})
+        # 记录 make_provider 是否被调用；key_exists 若被调到也记下来。
+        rig.deps.make_provider = lambda settings: made.append(1) or rig.provider
+        key_checks = []
+        rig.deps.key_exists = lambda name: key_checks.append(name) or False
+        record = rig.run()
+        assert record["result"] == "completed"
+        assert "llm_unavailable" not in rig.notified
+        assert rig.provider.check_calls == 0
+        assert made == []
+        assert key_checks == []
+
+    def test_markdown_still_checks_own_llm(self, tmp_path, monkeypatch):
+        """轻量引擎行为不变：claude_code 未登录照样报 llm_unavailable。"""
+        rig = Rig(tmp_path, monkeypatch, provider=FakeProvider(ok=False),
+                  settings={"engine": "markdown"})
+        record = rig.run()
+        assert record["result"] == "needs_user"
+        assert record["stop_reason"] == "llm_unavailable"
+        assert rig.provider.check_calls == 1
+
     def test_engine_unavailable(self, tmp_path, monkeypatch):
         rig = Rig(tmp_path, monkeypatch, engine=FakeEngine(health_ok=False))
         record = rig.run()

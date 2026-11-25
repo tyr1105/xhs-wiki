@@ -219,17 +219,27 @@ def test_distill_interrupt_resumes_without_repeating_card_calls(make_rig, tmp_pa
     assert len(provider.calls) == 5
 
 
-@pytest.mark.parametrize("result", [
-    DistillResult(status="partial"),
-    SimpleNamespace(status="partial", errors=[]),
-    {"status": "partial", "per_note": {}, "errors": []},
+@pytest.mark.parametrize("result,expected_stage", [
+    # per_note 为空字典：引擎没给任何结论，笔记保持 ingested。
+    (DistillResult(status="ok"), "ingested"),
+    ({"status": "ok", "per_note": {}, "errors": []}, "ingested"),
+    # 没有 per_note 属性的老式返回值（status=ok）：保持旧的一刀切推进。
+    (SimpleNamespace(status="ok", errors=[]), "distilled"),
 ])
-def test_apply_distill_accepts_empty_result_fields(tmp_path, result):
-    """空的逐条结果仍是有效字典，不能误走数据类的下标访问。"""
+def test_apply_distill_accepts_empty_result_fields(tmp_path, result,
+                                                   expected_stage):
+    """空的逐条结果仍是有效字典，不能误走数据类的下标访问。
+
+    v0.4.0 起 per_note 为空（或不含某条笔记）表示引擎没给结论
+    （LLM Wiki 引擎超时未完成就是这种情况）：笔记保持 ingested，
+    下一次运行接着核对，不算成功也不算失败；只有完全没有 per_note
+    的老式结果才沿用"整体状态一刀切"。
+    """
     with Ledger(tmp_path / "ledger.sqlite3") as ledger:
         ledger.upsert_discovered(fake_items(1))
         ledger.advance(nid(0), "ingested")
         record = runner._base_record("generated-run", "manual", FIXED_NOW)
         runner._apply_distill(ledger, record, [nid(0)], result)
-        assert ledger.get(nid(0))["attempts"] == 1
-        assert record["processed"]["distill"]["failed"] == 1
+        assert ledger.get(nid(0))["stage"] == expected_stage
+        assert ledger.get(nid(0))["attempts"] == 0
+        assert record["processed"]["distill"]["failed"] == 0

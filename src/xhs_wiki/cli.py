@@ -83,13 +83,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # 安装资源的下载/校验（install.sh 调用；也供用户手动补装）。
     assets_parser = sub.add_parser(
-        "assets", help="安装资源的下载和校验（下载组件、语音模型、LLM Wiki 后台）")
+        "assets", help="安装资源的下载和校验（下载组件、语音模型）")
     assets_sub = assets_parser.add_subparsers(dest="assets_command",
                                               required=True)
     assets_sub.add_parser("install-downloader",
                           help="下载并安装 XHS-Downloader 及其依赖")
-    assets_sub.add_parser("install-llmwiki",
-                          help="下载并校验 LLM Wiki 后台，自动配置程序路径")
     model_parser = assets_sub.add_parser(
         "install-model", help="下载并安装语音模型（whisper 或 sensevoice）")
     model_parser.add_argument("name", choices=["whisper", "sensevoice"],
@@ -272,39 +270,63 @@ def _cmd_doctor(args, deps_factory=None) -> int:
 
     # 6. 整理模型登录状态：claude_code/codex 查登录（不花钱）；
     #    anthropic/openai_compatible 只查钥匙串里有没有 Key。
-    try:
-        deps = deps_factory()
-        provider_name = settings["llm"]["provider"]
+    #    LLM Wiki 引擎（nashsu 版）例外：整理用的模型由 LLM Wiki 应用
+    #    自己调用，xhs-wiki 的 settings["llm"] 用不到，这里不显示这项
+    #    检查（会误报）；新引擎自己的模型检查在下方 llmwiki_model
+    #    一项里，已覆盖同样的信息。
+    if settings["engine"] != "llmwiki":
         try:
-            provider = deps.make_provider(settings)
-            if provider_name in ("claude_code", "codex"):
-                ok, reason = provider.check()
-                _check(f"整理模型（{provider_name}）", ok, reason)
-            else:
-                _check(f"整理模型（{provider_name} 的 Key）",
-                       deps.key_exists(provider_name), "钥匙串条目")
+            deps = deps_factory()
+            provider_name = settings["llm"]["provider"]
+            try:
+                provider = deps.make_provider(settings)
+                if provider_name in ("claude_code", "codex"):
+                    ok, reason = provider.check()
+                    _check(f"整理模型（{provider_name}）", ok, reason)
+                else:
+                    _check(f"整理模型（{provider_name} 的 Key）",
+                           deps.key_exists(provider_name), "钥匙串条目")
+            except Exception as error:
+                _check(f"整理模型（{provider_name}）", False,
+                       type(error).__name__)
         except Exception as error:
-            _check(f"整理模型（{provider_name}）", False, type(error).__name__)
-    except Exception as error:
-        _check("整理模型", False, type(error).__name__)
+            _check("整理模型", False, type(error).__name__)
 
-    # LLM Wiki 依赖另一个固定版本的后台和本机命令行助手；只在选了它时
-    # 核对，避免给轻量引擎用户制造多余的缺组件提示。这里只查找，不启动后台。
+    # LLM Wiki 引擎（nashsu/llm_wiki 桌面应用）：逐项显示新 health 的
+    # 检查（应用、版本、项目结构、整理模型），外加一项设置文件权限
+    # 提醒。只在选了它时核对，避免给轻量引擎用户制造多余提示。
+    # 这里只读文件系统，不启动应用、不调用模型。
     if settings["engine"] == "llmwiki":
-        from . import assets
-        from .llm.claude_code import find_claude
-        from .llm.codex import find_codex
+        from .engines.llmwiki_app.engine import LlmWikiAppEngine
 
-        ready = assets.llmwiki_ready(home)
-        _check("LLM Wiki 后台程序", ready,
-               "文件校验通过" if ready else "请运行 xhs-wiki assets install-llmwiki")
-        provider_name = settings["llm"]["provider"]
-        find_agent = {"claude_code": find_claude, "codex": find_codex}.get(provider_name)
-        found = bool(find_agent()) if find_agent is not None else False
-        _check("LLM Wiki 整理工具", found,
-               f"{provider_name} 已找到" if found else
-               ("llmwiki_agent_missing" if find_agent is not None
-                else "llmwiki_provider_unsupported"))
+        engine_obj = LlmWikiAppEngine(settings["kb_root"])
+        labels = {
+            "llmwiki_app": "LLM Wiki 应用",
+            "llmwiki_version": "LLM Wiki 版本（需 0.6.13 或更高）",
+            "llmwiki_project": "LLM Wiki 项目结构",
+            "llmwiki_model": "LLM Wiki 整理模型",
+        }
+        for name, ok, detail in engine_obj.health_checks():
+            # 通过时版本项显示实际版本号，其余显示"正常"；不通过时
+            # 显示原因（版本项给最低版本要求）。
+            if ok and name == "llmwiki_version":
+                _check(labels[name], True, detail)
+            elif ok:
+                _check(labels[name], True, "正常")
+            elif name == "llmwiki_version":
+                _check(labels[name], False,
+                       f"当前 {detail}，需 0.6.13 或更高")
+            else:
+                _check(labels[name], False, detail)
+        # 设置文件权限：app-state.json 里有明文密钥，权限比 600 宽时
+        # 提醒收紧（本机其他账户可读）；只提示，不自动修改。
+        state_path = engine_obj.app.state_path
+        if state_path.exists():
+            broad = bool(state_path.stat().st_mode & 0o077)
+            _check("LLM Wiki 设置文件权限", not broad,
+                   "正常" if not broad else "密钥以明文保存，建议收紧为仅本人可读（600）")
+        else:
+            _check("LLM Wiki 设置文件权限", True, "未找到设置文件")
 
     # 7. 知识库目录可写（**不创建任何目录**）。
     #    - 目录已存在：检查它本身能不能写；
@@ -583,20 +605,13 @@ def _cmd_open(args, opener=None) -> int:
 # ---------------------------------------------------------------------------
 
 def _cmd_assets(args) -> int:
-    """assets 子命令：下载组件 / 语音模型 / LLM Wiki 的下载、安装和核对。
+    """assets 子命令：下载组件 / 语音模型的下载、安装和核对。
 
     真实的网络和 uv 都在 assets.py 里；这里只做分发和打印。模型已齐全时
     install-model 先提示再跳过（安装脚本可重复执行）。
     """
     from . import assets
     home = config.app_home()
-    if args.assets_command == "install-llmwiki":
-        _print("开始下载并校验 LLM Wiki 后台程序……")
-        binary = assets.install_llmwiki(home)
-        # 路径只能由本机安装器写回，控制台的设置白名单不因此扩大。
-        ServiceStore(home).update_settings({"llmwiki_binary": str(binary)})
-        _print("LLM Wiki 后台程序已就绪，已自动配置")
-        return 0
     if args.assets_command == "install-downloader":
         _print("开始下载并安装 XHS-Downloader（下载组件）……")
         directory = assets.install_xhs_downloader(home)

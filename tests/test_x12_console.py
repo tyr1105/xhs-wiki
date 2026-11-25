@@ -32,126 +32,124 @@ def function(page, name, next_name):
         "function " + next_name + "(", 1)[0]
 
 
-def test_llmwiki_card_explains_download_and_constraints(page):
-    """卡片交代桌面浏览、额外下载和整理前关闭桌面版，不再要求另装桌面版。"""
+def test_llmwiki_card_copy_matches_new_engine(page):
+    """N02：卡片按新引擎（nashsu/llm_wiki）介绍，不再提下载后台程序、
+    Apple 芯片限制或"整理时要关闭桌面版 / 只能用命令行"这些旧限制。"""
     card = page.split('id="w-engine-llmwiki"', 1)[1].split(
-        '<p class="hint" id="w2-hint">', 1)[0]
-    for text in ("图谱和版本管理", "第一次选择会额外下载", "关闭 LLM Wiki 桌面版",
-                 "只能用 Claude Code 或 Codex", "点一下开始下载"):
+        '<div class="hidden" id="w2-check"', 1)[0]
+    for text in ("用 LLM Wiki 桌面应用整理（开源，nashsu/llm_wiki）",
+                 "有图谱、问答",
+                 "整理用的模型在 LLM Wiki 里选",
+                 "支持 Anthropic、OpenAI 等 API 和 Claude Code、Codex",
+                 "需要先安装 LLM Wiki，并保持它在后台运行"):
         assert text in card
-    assert "即将提供" not in card
-    assert "需要另外安装桌面版" not in card
+    for gone in ("下载", "关闭 LLM Wiki 桌面版", "只能用 Claude Code",
+                 "大小待确认", "Apple 芯片"):
+        assert gone not in card
 
 
-def test_llmwiki_size_comes_from_status_bytes(page):
-    """下载大小来自状态字节数，未知时不编造 0 MB 或固定下载量。"""
-    render = function(page, "renderLlmwikiCard", "checkLlmwikiEngine")
-    assert "Number(a.total_bytes)" in render
-    assert "Math.ceil(size/1000000)" in render
-    assert "大小待确认" in render
-    assert "(data.assets||{}).llmwiki" in page
+def test_step2_guidance_is_actionable_per_reason(page):
+    """第 2 步按原因代码给出可照做的指引，并提供「重新检查」按钮。"""
+    guidance = function(page, "llmwikiGuidance", "renderW2Check")
+    assert "github.com/nashsu/llm_wiki 的 Releases 下载 0.6.13" in guidance
+    assert "升级到 0.6.13 或更新版本" in guidance
+    assert "位置选 " in guidance and "名称填 " in guidance
+    assert "回到第 1 步" in guidance
+    # 位置和名称从第 1 步的输入框动态取，不写死。
+    assert "$('w-kb-root').value" in guidance
+    assert 'id="w2-recheck"' in page
+    check = function(page, "checkLlmwikiEngine", "refreshLlmwikiModel")
+    assert "post('/api/setup/engine',{engine:'llmwiki'},240000)" in check
 
 
-def test_unsupported_card_is_disabled_at_click_entry(page):
-    """既提供无障碍禁用状态，也在实际点击入口拒绝选择，避免仅变灰。"""
-    render = function(page, "renderLlmwikiCard", "checkLlmwikiEngine")
-    pick = function(page, "pickEngine", "wizNext")
-    assert "card.setAttribute('aria-disabled',String(unsupported))" in render
-    assert "card.tabIndex=unsupported?-1:0" in render
-    assert "name==='llmwiki'&&llmwikiSupported===false)return" in pick
-
-
-def test_download_progress_and_retry_stay_on_card(page):
-    """下载有百分比/未知大小两种显示，失败原因翻译后保留再次点击入口。"""
-    render = function(page, "renderLlmwikiCard", "checkLlmwikiEngine")
-    assert "a.state==='failed'" in render
-    assert "plainCode(a.error||'assets_error')" in render
-    assert "点一下重试" in render
-    assert "a.progress==null?'下载中…'" in render
-    assert "Math.round(Math.max(0,Math.min(1,a.progress))*100)" in render
-
-
-def test_ready_resource_checks_health_once_after_selection(page):
-    """状态轮询只在用户选择的资源就绪后发起健康检查，成功失败都记结果。"""
-    render = function(page, "renderLlmwikiCard", "checkLlmwikiEngine")
-    check = function(page, "checkLlmwikiEngine", "pickEngine")
-    assert "if(llmwikiChecking)" in render
-    assert "if(llmwikiHealthResult)" in render
-    assert "a.state==='ready'" in render
-    assert "engineChoice==='llmwiki'&&(llmwikiRequested||!engineTouched)" in render
-    assert "checkLlmwikiEngine()" in render
-    assert "ok:r.status===200" in check
-    assert "if(r.status===202)" in check
-    assert "llmwikiAsset=r.data.progress" in check
-
-
-def test_next_remains_clickable_and_does_not_advance_during_download(page):
-    """下载中的下一步给等待提示并提前返回，不把 202 当成功。"""
+def test_step2_blocks_next_until_check_passes(page):
+    """检查不通过不能进下一步；模型未配置是唯一例外（放进第 3 步处理）。"""
     next_step = function(page, "wizNext", "saveLlm")
-    assert "['downloading','pending'].includes(llmwikiAsset.state)" in next_step
-    assert "wizHint('后台程序还在下载');return" in next_step
-    assert "if(r.status===202){wizHint('后台程序还在下载');return}" in next_step
-    assert next_step.index("if(r.status===202)") < next_step.index("wizStep=3")
-    assert "$('w-next').disabled" not in page
+    assert "llmwikiGuidance(reason)" in next_step
+    assert next_step.index("reason==='llmwiki_model_missing'") < next_step.index("wizStep=3")
+    # 检查通过才保存引擎、进第 3 步。
+    assert "llmwikiHealthResult.ok" in next_step
 
 
-def test_llmwiki_removes_api_options_and_resets_invalid_choice(page):
-    """过滤实际下拉节点；切回轻量恢复完整列表，旧 API 选择转 Claude Code。"""
-    filtering = function(page, "filterWizardProviders", "renderLlmwikiCard")
-    assert "engineChoice==='llmwiki'" in filtering
-    assert "!limited||['claude_code','codex'].includes(o.value)" in filtering
-    assert "select.replaceChildren(...options)" in filtering
-    assert "select.value=allowed?previous:'claude_code'" in filtering
-    assert "modelTouched=false;providerTouched=true" in filtering
-    assert 'id="w-provider-engine-tip"' in page
+def test_step3_llmwiki_panel_replaces_own_llm_form(page):
+    """选 LLM Wiki 时隐藏 xhs-wiki 自己的表单，改为指引 + 检查结果 + 测试。"""
+    panel = page.split('id="w-llmwiki-panel"', 1)[1].split(
+        'id="w-llmwiki-testnote"', 1)[0]
+    for text in ("设置 → LLM Models", "xhs-wiki 不保存你的密钥",
+                 "Ingest model", "Anthropic-compat",
+                 "https://api.anthropic.com", "claude-haiku-5-5",
+                 "Claude 5 系列"):
+        assert text in panel
+    # 表单切换：面板/表单互斥，保存按钮变成「重新检查」。
+    mode = function(page, "syncStep3Mode", "onProviderChange")
+    assert "$('w-llm-fields').classList.toggle('hidden',wiki)" in mode
+    assert "$('w-llmwiki-panel').classList.toggle('hidden',!wiki)" in mode
+    assert "重新检查" in mode
 
 
-def test_optional_asset_does_not_block_all_ready_banner(page):
-    """LLM Wiki 的 not_needed 要在 allReady=false 之前跳过。"""
+def test_step3_check_result_and_permission_button(page):
+    """检查结果显示提供方/模型/密钥（不含密钥内容），权限过宽可一键收紧。"""
+    render = function(page, "renderLlmwikiModel", "pickEngine")
+    for text in ("模型提供方", "整理用模型（Ingest model）",
+                 "不需要（命令行或本机模型）", "本机其他账号也能读",
+                 "收紧为仅本人可读", "llmwiki_wrong_project"):
+        assert text in render or text in page.split("function renderLlmwikiModel")[1]
+    assert "post('/api/setup/llmwiki-tighten',{})" in render
+    # 密钥只显示 是/否：渲染代码里没有任何地方读密钥字段。
+    assert "apiKey" not in render
+
+
+def test_step3_test_button_flow(page):
+    """测试按钮：先确认费用；项目不匹配时不可用；期间禁用按钮防重复点击。"""
+    handler = page.split("$('w-test-llm').addEventListener", 1)[1].split(
+        "$('w-qr-refresh')", 1)[0]
+    assert "一次很小的模型调用费用" in handler
+    assert "llmwikiModelInfo.wrong_project" in handler
+    assert "post('/api/setup/test-llmwiki',{confirm_cost:true},330000)" in handler
+    assert "一并清理" in handler
+    assert "saveBtn.disabled=true;testBtn.disabled=true" in handler
+
+
+def test_step3_next_rechecks_engine_before_advancing(page):
+    """LLM Wiki 引擎的「下一步」重做健康检查，通过才进第 4 步。"""
+    next_step = function(page, "wizNext", "saveLlm")
+    assert "checkLlmwikiEngine()" in next_step
+    assert "引擎检查未通过" in next_step
+
+
+def test_daily_page_llmwiki_extras(page):
+    """日常页：待审核条数（读不到不显示）、权限提示和收紧按钮。"""
+    assert 'id="kb-review-span"' in page
+    assert "LLM Wiki 待审核" in page
+    assert "在 LLM Wiki 的审核页处理，不影响整理" in page
+    assert "kb.review_pending==null" in page
+    # 同名重复页：有才显示，文件名用 textContent 写入。
+    assert 'id="kb-dup-span"' in page
+    assert "kb.duplicate_pages" in page
+    assert "$('kb-dup-list').textContent=" in page
+    assert 'id="e-llmwiki-perm"' in page
+    assert "明文保存在设置文件里" in page
+    assert "post('/api/setup/llmwiki-tighten',{})" in page
+    # LLM Wiki 引擎时隐藏日常页的提供方/模型输入框。
+    assert "$('e-llm-fields').classList.toggle('hidden',wikiEngine)" in page
+
+
+def test_assets_bar_has_no_llmwiki_kind(page):
+    """资源下载区不再有「LLM Wiki 后台」一项。"""
     render = function(page, "renderAssets", "el")
-    assert "['xhs_downloader','asr_model','llmwiki']" in render
-    assert render.index("a.state==='not_needed'") < render.index("allReady=false")
+    assert "llmwiki" not in render
+    assert "LLM Wiki 后台" not in render
+    assert "['xhs_downloader','asr_model']" in render
 
 
-def test_switching_to_markdown_releases_wizard_request(page):
-    """明确把轻量选择交给服务端，使后台取消 LLM Wiki 的必需资源状态。"""
-    pick = function(page, "pickEngine", "wizNext")
-    assert "llmwikiRequested=false" in pick
-    assert "post('/api/setup/engine',{engine:'markdown'})" in pick
-
-
-def test_llmwiki_and_download_errors_have_chinese_labels(page):
-    """锁定新增代码和复用的下载失败代码，避免角标退回内部英文错误。"""
-    labels = dict(re.findall(r"^\s*([a-z0-9_]+):'([^']*)'", page, re.M))
-    for code in ("llmwiki_unsupported_platform", "llmwiki_agent_missing",
+def test_dead_engine_codes_removed_from_labels(page):
+    """旧引擎的错误代码不再出现在页面（新引擎的代码另有专项测试）。"""
+    for code in ("llmwiki_agent_missing", "llmwiki_wrapper_failed",
                  "llmwiki_provider_unsupported", "llmwiki_desktop_running",
-                 "llmwiki_wrapper_failed", "assets_sha256_mismatch",
-                 "assets_network_error", "assets_size_mismatch",
-                 "assets_extract_failed", "assets_error"):
-        assert re.search(r"[\u4e00-\u9fff]", labels[code]), code
+                 "llmwiki_unsupported_platform", "llmwiki_review_required",
+                 "llmwiki_binary", "backend_start_timeout", "后台程序"):
+        assert code not in page, code
 
-
-def test_readmes_describe_release_integrity_and_pending_review():
-    """两种语言都说明来源、双重校验和审阅边界，并指向清单里实际下载的那个 Release。
-
-    发布前的"清单还是占位值"说法不能留在文档里；Release 标签从清单读取，
-    以后换新版后台时，忘了同步 README 会在这里报错。
-    """
-    manifest = json.loads(
-        (ROOT / "src/xhs_wiki/assets_manifest.json").read_text(encoding="utf-8"))
-    release_tag = "releases/tag/headless-v" + manifest["llmwiki"]["version"]
-    for name in ("README.md", "README_EN.md"):
-        text = (ROOT / name).read_text(encoding="utf-8")
-        for expected in ("tree/headless", "GitHub Actions", "SHA-256",
-                         "install-llmwiki", "v2.0.6", "Codex", "Apache-2.0",
-                         release_tag):
-            assert expected in text, (name, expected)
-    chinese = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "控制台本身不提供审阅按钮" in chinese
-    assert "发布前占位" not in chinese and "发布占位" not in chinese
-    english = (ROOT / "README_EN.md").read_text(encoding="utf-8")
-    assert "console has no review buttons" in english
-    assert "release placeholder" not in english
 
 
 def test_docs_say_llmwiki_pages_are_always_simplified_chinese():
@@ -172,161 +170,81 @@ def test_docs_say_llmwiki_pages_are_always_simplified_chinese():
         assert "LLM_WIKI_CONTENT_LANGUAGE=zh-CN" in text
 
 
-def test_missing_default_agent_can_choose_provider_before_health_passes(page):
-    """缺少默认代理仅放行选择提供方，后续保存必须等引擎健康通过。"""
-    next_step = function(page, "wizNext", "saveLlm")
-    save = page.split("async function saveLlm(){", 1)[1].split(
-        "/* ============ 事件绑定", 1)[0]
-    assert "r.data.reason==='llmwiki_agent_missing'" in next_step
-    assert "请先选择本机已安装的 Claude Code 或 Codex" in next_step
-    assert "engineResult=await checkLlmwikiEngine()" in save
-    assert "engineResult.status!==200" in save
-    assert save.index("engineResult.status!==200") < save.index("hint.textContent='已保存 ✓'")
-    assert "post('/api/setup/finish',{},240000)" in next_step
+# ---------------------------------------------------------------------------
+# 执行页面真实 JavaScript（假 DOM / 假 fetch），覆盖 N02 的 LLM Wiki 流程
+# ---------------------------------------------------------------------------
 
-
-def test_wizard_javascript_with_fake_dom_and_fetch(tmp_path):
-    """有 Node 的开发环境执行真实页面逻辑；没有则仍保留上面的静态门槛。
-
-    Node 只运行本地字符串和假的 DOM、fetch，不启动浏览器、不绑定端口，
-    也不允许未安排的请求。脚本在 pytest 临时目录中，避免留下调试文件。
-    """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("可选的本地 JavaScript 运行器 Node 未安装；不安装新依赖")
-    script = tmp_path / "wizard_fake_dom.js"
-    script.write_text(r'''
-const fs=require('fs'),vm=require('vm'),assert=require('assert');
-const html=fs.readFileSync(process.argv[2],'utf8');
-const script=html.split('<script>')[1].split('</script>')[0].split('/* ============ 事件绑定 ============ */')[0];
-const nodes=new Map();
-// 只实现被向导实际用到的 DOM 方法，其余动作都留给断言检查。
-function element(id){
- if(nodes.has(id))return nodes.get(id);
- const n={id,value:'',textContent:'',style:{},dataset:{},attrs:{},options:[],children:[],classList:{add(){},remove(){},toggle(){}},setAttribute(k,v){this.attrs[k]=v},replaceChildren(...items){this.children=items;if(id==='w-provider')this.options=items},append(){},querySelector(){return element(id+'-child')}};
- if(id==='w-provider'){n.options=['claude_code','codex','anthropic','openai_compatible'].map(value=>({value}));n.value='claude_code'}
- nodes.set(id,n);return n;
+N02_SCENARIOS = {
+    # 第 2 步：选中 → 健康检查不通过（没装应用）→ 指引可见；
+    # 重新检查通过 → 检查结果区显示通过 → 下一步进第 3 步并自动取检查结果。
+    "wizard_llmwiki_full_flow": r"""
+    await run("engineChoice='llmwiki';engineTouched=true;wizStep=2");
+    responses.push({status:400,data:{error:'engine_unavailable',reason:'llmwiki_app_missing'}});
+    await run("pickEngine('llmwiki')");
+    assert(element('w2-guidance').textContent.includes('github.com/nashsu/llm_wiki'));
+    assert.equal(await run('wizStep'),2);
+    // 下一步被不通过的检查挡住（再次发起检查，仍失败）。
+    responses.push({status:400,data:{error:'engine_unavailable',reason:'llmwiki_app_missing'}});
+    await run('wizNext()');
+    assert.equal(await run('wizStep'),2);
+    assert(element('wiz-hint').textContent.includes('没找到 LLM Wiki'));
+    // 重新检查通过 → 检查结果区显示通过 → 下一步进第 3 步（自动取模型信息）。
+    responses.push({status:200,data:{ok:true}});
+    responses.push({status:200,data:{ok:true,model:{provider:'自定义提供方',model:'claude-haiku-5-5',has_key:true,key_needed:true},wrong_project:false,permission:null}});
+    await element('w2-recheck').events.click();
+    await run('wizNext()');
+    assert.equal(await run('wizStep'),3);
+    assert.equal(element('w-save-llm').textContent,'重新检查');
+    assert(requests.some(r=>r.path==='/api/setup/llmwiki-model'));
+    // 第 3 步的下一步：重做健康检查 + 刷新模型信息，通过后进第 4 步。
+    responses.push({status:200,data:{ok:true}});
+    responses.push({status:200,data:{ok:true,model:{provider:'自定义提供方',model:'claude-haiku-5-5',has_key:true,key_needed:true},wrong_project:false,permission:null}});
+    await run('wizNext()');
+    assert.equal(await run('wizStep'),4);
+    assert(element('w3-hint').textContent.includes('检查通过'));
+    """,
+    # 模型未配置不算第 2 步的拦路问题：直接放进第 3 步处理。
+    "wizard_model_missing_enters_step3": r"""
+    await run("engineChoice='llmwiki';engineTouched=true;wizStep=2");
+    responses.push({status:400,data:{error:'engine_unavailable',reason:'llmwiki_model_missing'}});
+    responses.push({status:200,data:{ok:true,model:{provider:null,model:null,has_key:false,key_needed:true},wrong_project:false,permission:null}});
+    await run('wizNext()');
+    assert.equal(await run('wizStep'),3);
+    assert(element('wiz-hint').textContent.includes('整理用的模型还没配好'));
+    """,
+    # 日常页引擎表单选 LLM Wiki：只保存引擎选择，不改 xhs-wiki 的模型设置。
+    "daily_engine_llmwiki_only_posts_engine": r"""
+    await run("last={settings:{engine:'markdown'}};$('e-engine').value='llmwiki'");
+    responses.push({status:400,data:{error:'engine_unavailable',reason:'llmwiki_app_missing'}});
+    await element('engine-form').events.submit({preventDefault(){}});
+    assert.deepEqual(requests.map(r=>r.path),['/api/setup/engine']);
+    assert(requests[0].body.engine==='llmwiki');
+    assert(element('engine-hint').textContent.includes('没找到 LLM Wiki'));
+    assert(!element('engine-hint').textContent.includes('已保存'));
+    """,
+    # 从 LLM Wiki 切回轻量并选 API 提供方：先切引擎再保存提供方（顺序不变）。
+    "markdown_switch_before_api_provider": r"""
+    await run("last={settings:{engine:'llmwiki'}};$('e-engine').value='markdown';$('e-provider').value='anthropic';$('e-model').value='generated-model'");
+    responses.push({status:200,data:{}},{status:200,data:{}});
+    await element('engine-form').events.submit({preventDefault(){}});
+    assert.deepEqual(requests.map(r=>r.path),['/api/setup/engine','/api/setup/llm']);
+    assert(requests[0].body.engine==='markdown');
+    assert(element('engine-hint').textContent.startsWith('已保存'));
+    """,
 }
-const responses=[],requests=[];
-const context=vm.createContext({document:{getElementById:element,querySelector:()=>({content:'fake'}),createElement:()=>element('generated'),createTextNode:()=>({})},AbortSignal:{timeout:()=>null},Intl,Date,console,fetch:async(path,options)=>{requests.push({path,body:JSON.parse(options.body)});assert(responses.length,'unexpected request');const r=responses.shift();return {status:r.status,json:async()=>r.data}}});
-vm.runInContext(script,context);
-async function run(code){return vm.runInContext(code,context)}
-(async()=>{
- await run("llmwikiSupported=true;llmwikiAsset={state:'not_needed',total_bytes:12500000};renderLlmwikiCard()");
- assert.equal(element('w-engine-llmwiki-size').textContent,'约 13 MB 的后台程序');
- responses.push({status:202,data:{progress:{state:'downloading',progress:.42}}});
- await run("pickEngine('llmwiki')");
- assert.equal(element('w-engine-llmwiki-badge').textContent,'下载中 42%');
- await run('wizStep=2;wizNext()');
- assert.equal(element('wiz-hint').textContent,'后台程序还在下载');assert.equal(requests.length,1);
- responses.push({status:200,data:{}});
- await run("llmwikiAsset={state:'ready'};renderLlmwikiCard()");await new Promise(setImmediate);
- assert.equal(element('w-engine-llmwiki-badge').textContent,'可用');assert.equal(requests.length,2);
- await run('renderLlmwikiCard();renderLlmwikiCard()');assert.equal(requests.length,2);
- await run("llmwikiAsset={state:'failed',error:'assets_network_error'};renderLlmwikiCard()");
- assert(element('w-engine-llmwiki-badge').textContent.includes('点一下重试'));
- responses.push({status:202,data:{progress:{state:'downloading',progress:null}}});
- await run("pickEngine('llmwiki')");assert.equal(element('w-engine-llmwiki-badge').textContent,'下载中…');
- // 缺少默认 Claude 时只进入提供方选择，不误认为已保存引擎。
- await run("llmwikiAsset={state:'ready'}");
- responses.push({status:400,data:{reason:'llmwiki_agent_missing'}});
- await run('wizStep=2;wizNext()');assert.equal(await run('wizStep'),3);
- await run("$('w-provider').value='codex';onProviderChange()");
- responses.push({status:200,data:{}},{status:400,data:{reason:'llmwiki_agent_missing'}});
- await run('wizNext()');assert.equal(await run('wizStep'),3);
- responses.push({status:200,data:{}},{status:200,data:{}});
- await run('wizNext()');assert.equal(await run('wizStep'),4);
- assert(requests.some(r=>r.path==='/api/setup/llm'&&r.body.provider==='codex'));
- // 其他健康错误不放行；正在检查时不能发出并发切换请求。
- responses.push({status:400,data:{reason:'llmwiki_desktop_running'}});
- await run('wizStep=2;wizNext()');assert.equal(await run('wizStep'),2);
- const beforeBusy=requests.length;
- await run("llmwikiChecking=true;pickEngine('markdown')");
- assert.equal(requests.length,beforeBusy);assert.equal(await run('engineChoice'),'llmwiki');
- await run("llmwikiChecking=false;engineChoice='markdown';filterWizardProviders();$('w-provider').value='anthropic';engineChoice='llmwiki';onProviderChange()");
- assert.equal(element('w-provider').value,'claude_code');assert.equal(element('w-provider').options.length,2);
- await run("engineChoice='markdown';filterWizardProviders()");assert.equal(element('w-provider').options.length,4);
- await run('llmwikiSupported=false;renderLlmwikiCard()');const count=requests.length;
- await run("pickEngine('llmwiki')");assert.equal(requests.length,count);assert.equal(element('w-engine-llmwiki').attrs['aria-disabled'],'true');
- assert.equal(responses.length,0);
- console.log('向导真实 JavaScript 与假 DOM/fetch 验证通过');
-})().catch(e=>{console.error(e);process.exitCode=1});
-''', encoding="utf-8")
-    result = subprocess.run(
-        [node, str(script), str(ROOT / "src/xhs_wiki/web/console.html")],
-        capture_output=True, text=True, timeout=15, check=False,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "验证通过" in result.stdout
 
 
-@pytest.mark.parametrize("scenario", [
-    "restart_restores_saved_engine", "markdown_before_api",
-    "markdown_failure_keeps_provider", "reject_llmwiki_api",
-    "daily_download_is_pending", "daily_health_reason_is_translated",
-])
-def test_reenter_wizard_and_daily_engine_changes(tmp_path, scenario):
-    """执行页面实际事件，覆盖重新设置与日常表单受新引擎规则影响的分支。
+@pytest.mark.parametrize("scenario", sorted(N02_SCENARIOS))
+def test_n02_wizard_and_daily_javascript(tmp_path, scenario):
+    """执行页面实际事件，覆盖 N02 的 LLM Wiki 向导与日常表单分支。
 
-    假 fetch 逐项消费预设响应，任何多余请求都会使测试失败；刷新只记录
-    次数，不访问本地服务。这里既核对最终提示，也核对请求顺序和请求体。
+    假 fetch 逐项消费预设响应（GET 也一样），任何多余请求都会使测试失败。
     """
     node = shutil.which("node")
     if node is None:
         pytest.skip("可选的本地 JavaScript 运行器 Node 未安装；不安装新依赖")
-    scenarios = {
-        "restart_restores_saved_engine": r'''
-await run("engineTouched=true;providerTouched=true;modelTouched=true;limitTouched=true;kbRootLoaded=true;engineChoice='llmwiki';wizStep=5;llmwikiHealthResult={ok:true};filterWizardProviders()");
-responses.push({status:200,data:{}});
-await element('restart-setup').events.click();
-assert.equal(await run('wizStep'),1);assert.equal(await run('engineTouched'),false);
-assert.equal(await run('llmwikiHealthResult'),null);assert.equal(element('w-provider').options.length,4);
-assert.equal(element('w-kb-root').disabled,true);
-await run("renderWizard({llmwiki_supported:true,settings:{engine:'markdown',llm:{provider:'anthropic'},kb_root:'/tmp/generated-wiki'},assets:{llmwiki:{state:'not_needed'}}})");
-assert.equal(await run('engineChoice'),'markdown');assert.equal(element('w-provider').value,'anthropic');
-assert.equal(await run('kbRootLoaded'),true);assert.equal(requests.length,1);
-''',
-        "markdown_before_api": r'''
-await run("last={settings:{engine:'llmwiki'}};$('e-engine').value='markdown';$('e-provider').value='openai_compatible';$('e-model').value='generated-model';$('e-model').dataset.base_url='https://api.example.test/v1'");
-responses.push({status:200,data:{}},{status:200,data:{}});
-await element('engine-form').events.submit({preventDefault(){}});
-assert.deepEqual(requests.map(r=>r.path),['/api/setup/engine','/api/setup/llm']);
-assert.equal(requests[0].body.engine,'markdown');assert.equal(requests[1].body.provider,'openai_compatible');
-assert.equal(requests[1].body.base_url,'https://api.example.test/v1');
-assert(element('engine-hint').textContent.startsWith('已保存'));
-''',
-        "markdown_failure_keeps_provider": r'''
-await run("last={settings:{engine:'llmwiki'}};$('e-engine').value='markdown';$('e-provider').value='anthropic';$('e-model').value='generated-model'");
-responses.push({status:400,data:{reason:'engine_unavailable'}});
-await element('engine-form').events.submit({preventDefault(){}});
-assert.equal(requests.length,1);assert.equal(requests[0].path,'/api/setup/engine');
-assert.equal(element('engine-hint').textContent,'引擎保存失败：这个引擎暂不可用');
-''',
-        "reject_llmwiki_api": r'''
-await run("last={settings:{engine:'markdown'}};$('e-engine').value='llmwiki';$('e-provider').value='anthropic';$('e-model').value='generated-model'");
-await element('engine-form').events.submit({preventDefault(){}});
-assert.equal(requests.length,0);
-assert.equal(element('engine-hint').textContent,'LLM Wiki 引擎只能用 Claude Code 或 Codex 整理');
-''',
-        "daily_download_is_pending": r'''
-await run("last={settings:{engine:'markdown'}};$('e-engine').value='llmwiki';$('e-provider').value='codex';$('e-model').value=''");
-responses.push({status:200,data:{}},{status:202,data:{state:'downloading',progress:{state:'downloading'}}});
-await element('engine-form').events.submit({preventDefault(){}});
-assert.deepEqual(requests.map(r=>r.path),['/api/setup/llm','/api/setup/engine']);
-assert.equal(requests[0].body.model,'default');assert.equal(requests[1].timeout,240000);
-assert(element('engine-hint').textContent.includes('后台程序还在下载'));
-assert(element('engine-hint').textContent.includes('重新设置'));
-assert(!element('engine-hint').textContent.includes('已保存'));
-''',
-        "daily_health_reason_is_translated": r'''
-await run("last={settings:{engine:'markdown'}};$('e-engine').value='llmwiki';$('e-provider').value='claude_code';$('e-model').value='generated-model'");
-responses.push({status:200,data:{}},{status:400,data:{reason:'llmwiki_desktop_running'}});
-await element('engine-form').events.submit({preventDefault(){}});
-assert.equal(element('engine-hint').textContent,'引擎保存失败：LLM Wiki 桌面版正在运行，请先关闭再试');
-''',
-    }
-    script = tmp_path / "console_events.js"
-    script.write_text(r'''
+    script = tmp_path / "n02_console_events.js"
+    script.write_text(r"""
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const html=fs.readFileSync(process.argv[2],'utf8');
 // 注册全部实际事件，但跳过页面末尾的首次刷新和定时轮询。
@@ -334,27 +252,27 @@ const source=html.split('<script>')[1].split('</script>')[0].split('\nonProvider
 const nodes=new Map(),responses=[],requests=[];
 function element(id){
  if(nodes.has(id))return nodes.get(id);
- const n={id,value:'',textContent:'',disabled:false,style:{},dataset:{},events:{},attrs:{},options:[],children:[],classList:{add(){},remove(){},toggle(){}},setAttribute(k,v){this.attrs[k]=v},replaceChildren(...items){this.children=items;if(id==='w-provider')this.options=items},append(){},querySelector(){return element(id+'-child')},addEventListener(k,f){this.events[k]=f}};
+ const n={id,value:'',textContent:'',disabled:false,style:{},dataset:{},events:{},attrs:{},options:[],children:[],classList:{add(){},remove(){},toggle(){}},setAttribute(k,v){this.attrs[k]=v},replaceChildren(...items){this.children=items},append(...items){this.children.push(...items)},querySelector(){return null},addEventListener(k,f){this.events[k]=f}};
  if(id==='w-provider'){n.options=['claude_code','codex','anthropic','openai_compatible'].map(value=>({value}));n.value='claude_code'}
  nodes.set(id,n);return n;
 }
-let refreshed=0;
-const context=vm.createContext({document:{getElementById:element,querySelector:()=>({content:'fake'}),createElement:()=>element('generated'),createTextNode:()=>({})},AbortSignal:{timeout:n=>n},Intl,Date,console,confirm:()=>true,alert:message=>{throw Error(message)},fetch:async(path,options)=>{requests.push({path,body:JSON.parse(options.body),timeout:options.signal});assert(responses.length,'出现未安排的请求');const r=responses.shift();return {status:r.status,json:async()=>r.data}}});
+const context=vm.createContext({document:{getElementById:element,querySelector:()=>({content:'fake'}),createElement:()=>element('node-'+Math.random()),createTextNode:t=>({textContent:t})},AbortSignal:{timeout:n=>n},Intl,Date,console,confirm:()=>true,alert:m=>{throw Error(m)},
+ fetch:async(path,options)=>{options=options||{};requests.push({path,body:options.body?JSON.parse(options.body):null});assert(responses.length,'出现未安排的请求：'+path);const r=responses.shift();return {status:r.status,json:async()=>r.data,ok:r.status>=200&&r.status<300}}});
 vm.runInContext(source,context);
-context.recordRefresh=()=>{refreshed++};
-vm.runInContext('refresh=recordRefresh',context);
+let refreshed=0;context.recordRefresh=()=>{refreshed++};vm.runInContext('refresh=recordRefresh',context);
 async function run(code){return vm.runInContext(code,context)}
 (async()=>{
-''' + scenarios[scenario] + r'''
+""" + N02_SCENARIOS[scenario] + r"""
 assert.equal(responses.length,0);console.log('控制台事件验证通过');
 })().catch(e=>{console.error(e);process.exitCode=1});
-''', encoding="utf-8")
+""", encoding="utf-8")
     result = subprocess.run(
         [node, str(script), str(ROOT / "src/xhs_wiki/web/console.html")],
         capture_output=True, text=True, timeout=15, check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "验证通过" in result.stdout
+
 
 # ---------------------------------------------------------------------------
 # "在哪些 AI 工具里提问"（向导第 6 步和日常页共用的勾选框）
