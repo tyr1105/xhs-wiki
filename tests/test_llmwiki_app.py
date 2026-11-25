@@ -34,7 +34,9 @@ from xhs_wiki.engines.llmwiki_app.engine import (EngineNeedsUser,
                                                  classify_queue_error)
 from xhs_wiki.store import ServiceStore
 
-FIXTURES = Path(__file__).resolve().parent.parent / ".dev/fixtures/nashsu-0.6.13"
+# LLM Wiki 0.6.13 真实记录文件的样例（数据全是虚构的测试笔记）。放在 tests/ 下随仓库提交，
+# CI 才读得到；.dev/ 不进仓库。
+FIXTURES = Path(__file__).resolve().parent / "fixtures/nashsu-0.6.13"
 
 
 # ---------------------------------------------------------------------------
