@@ -177,6 +177,8 @@ def test_whisper_factory_uses_local_cpu_int8(tmp_path, monkeypatch):
         return fake_model
 
     monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=construct))
+    # 本机没有可用 GPU 时走 CPU int8（测试里固定成「不可用」，不依赖跑测试的机器）。
+    monkeypatch.setattr(asr, "_mps_available", lambda: False)
     backend = asr._create_whisper(tmp_path)
     assert backend.model is fake_model
     name, kwargs = calls[0]
@@ -185,6 +187,54 @@ def test_whisper_factory_uses_local_cpu_int8(tmp_path, monkeypatch):
     assert kwargs["compute_type"] == "int8"
     assert kwargs["local_files_only"] is True
     assert kwargs["download_root"] == str(tmp_path / "faster-whisper")
+
+
+# 有 GPU（MPS）时先用 GPU float16，并备好 CPU 退路；同样只读本地快照。
+def test_whisper_factory_prefers_mps_when_available(tmp_path, monkeypatch):
+    snapshot, _ = make_whisper_cache(tmp_path)
+    calls = []
+    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(
+        WhisperModel=lambda name, **kwargs: calls.append((name, kwargs)) or object()))
+    monkeypatch.setattr(asr, "_mps_available", lambda: True)
+    backend = asr._create_whisper(tmp_path)
+    name, kwargs = calls[0]
+    assert name == str(snapshot)
+    assert kwargs["device"] == "mps"
+    assert kwargs["compute_type"] == "float16"
+    assert kwargs["local_files_only"] is True
+    assert backend.cpu_fallback is not None
+    assert len(calls) == 1  # CPU 模型只在需要时才造
+
+
+# GPU 模型加载失败时直接退回 CPU int8，转写仍然可用。
+def test_whisper_factory_falls_back_to_cpu_when_mps_load_fails(tmp_path, monkeypatch):
+    make_whisper_cache(tmp_path)
+    devices = []
+
+    def construct(name, **kwargs):
+        devices.append(kwargs["device"])
+        if kwargs["device"] == "mps":
+            raise RuntimeError("mps unavailable")
+        return object()
+
+    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=construct))
+    monkeypatch.setattr(asr, "_mps_available", lambda: True)
+    backend = asr._create_whisper(tmp_path)
+    assert devices == ["mps", "cpu"]
+    assert backend.cpu_fallback is None
+
+
+# 环境变量 XHS_WIKI_ASR_DEVICE=cpu 强制只用 CPU，不去探测 GPU。
+def test_mps_available_respects_cpu_override(monkeypatch):
+    monkeypatch.setenv("XHS_WIKI_ASR_DEVICE", "cpu")
+    monkeypatch.setitem(sys.modules, "ctranslate2", SimpleNamespace(
+        get_mps_device_count=lambda: 1))
+    assert asr._mps_available() is False
+    monkeypatch.delenv("XHS_WIKI_ASR_DEVICE")
+    assert asr._mps_available() is True
+    # 旧版 ctranslate2 没有这个函数时按不可用处理，不报错。
+    monkeypatch.setitem(sys.modules, "ctranslate2", SimpleNamespace())
+    assert asr._mps_available() is False
 
 
 # 模型仓库换过组织名，路线 2 同时认新旧两个缓存目录名。
@@ -408,6 +458,37 @@ def test_whisper_consumes_generator_and_preserves_timestamps():
         {"start": 0.1, "end": 0.2, "text": "甲句。"},
     ]
     assert state == ["consumed"]
+
+
+# GPU 识别中途出错：换 CPU 模型把这一条重跑，之后一直用 CPU，不再回到 GPU。
+def test_whisper_gpu_error_retries_once_on_cpu():
+    def broken(samples, **kwargs):
+        raise RuntimeError("metal error")
+
+    def ok(samples, **kwargs):
+        return iter([SimpleNamespace(start=0.0, end=1.0, text="乙句")]), None
+
+    made = []
+    cpu_model = SimpleNamespace(transcribe=ok)
+    backend = asr._WhisperBackend(
+        SimpleNamespace(transcribe=broken),
+        cpu_fallback=lambda: made.append(1) or cpu_model,
+    )
+    samples = np.zeros(16000, dtype=np.float32)
+    assert backend.transcribe(samples)[0]["text"] == "乙句"
+    assert backend.model is cpu_model and backend.cpu_fallback is None
+    backend.transcribe(samples)
+    assert made == [1]
+
+
+# 没有 CPU 退路时（本来就在 CPU 上）识别错误照常抛出，由上层记为转写失败。
+def test_whisper_cpu_error_propagates_without_fallback():
+    def broken(samples, **kwargs):
+        raise RuntimeError("boom")
+
+    backend = asr._WhisperBackend(SimpleNamespace(transcribe=broken))
+    with pytest.raises(RuntimeError):
+        backend.transcribe(np.zeros(16000, dtype=np.float32))
 
 
 # 解码器收到完整路径，带空格不会被拆开；输出格式、限幅、权限和原子替换都要核对。

@@ -2522,6 +2522,18 @@ def llmwiki_review_pending(kb_root) -> int | None:
                if isinstance(item, dict) and not item.get("resolved"))
 
 
+def llmwiki_duplicate_pages(kb_root) -> list[list[str]]:
+    """主题页里「只差标点、空白或大小写」的同名页面分组（见 related.duplicate_name_groups）。
+
+    出任何错都返回空列表：这是提示信息，不能拖垮整个状态接口。
+    在函数里导入：只有 LLM Wiki 引擎才用到，轻量引擎不加载这个包。"""
+    try:
+        from .engines.llmwiki_app import related
+        return related.duplicate_name_groups(Path(kb_root).expanduser())
+    except Exception:
+        return []
+
+
 # ---------------------------------------------------------------------------
 # /api/status 的组装
 # ---------------------------------------------------------------------------
@@ -2601,6 +2613,11 @@ def build_status(server: ServiceServer) -> dict:
         pending = llmwiki_review_pending(settings["kb_root"])
         if pending is not None:
             kb_extra["review_pending"] = pending
+        # 同名重复页（只差标点、空白或大小写的主题页），有才给这个键，
+        # 页面上没有就不显示。每次收录后状态刷新即可看到。
+        duplicates = llmwiki_duplicate_pages(settings["kb_root"])
+        if duplicates:
+            kb_extra["duplicate_pages"] = duplicates
 
     return {
         "status": store.read_status(),

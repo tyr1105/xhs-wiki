@@ -154,6 +154,8 @@ footer{margin-top:22px;color:var(--muted);font-size:12px;display:flex;justify-co
     <span>暂缓 <b id="kb-deferred">—</b></span>
     <!-- LLM Wiki 引擎才有：待审核条数；读不到时整个不显示 -->
     <span id="kb-review-span" class="hidden">LLM Wiki 待审核 <b id="kb-review">—</b> 条（在 LLM Wiki 的审核页处理，不影响整理）</span>
+    <!-- LLM Wiki 引擎才有：只差标点的同名主题页，有才显示，列出文件名请用户手动合并 -->
+    <span id="kb-dup-span" class="hidden">同名重复页 <b id="kb-dup">—</b> 组（文件名只差标点，请合并为一页）：<span id="kb-dup-list"></span></span>
     <span>累计清理 <b id="cleanup-total">—</b></span>
     <span>磁盘剩余 <b id="disk-free">—</b> / <b id="disk-total">—</b></span>
     <!-- 服务端用 /usr/bin/open -R 在访达里选中知识库目录，不会启动任何程序 -->
@@ -864,6 +866,12 @@ function render(data){
   /* LLM Wiki 待审核条数：服务端读不到时不给这个键，这里整项隐藏。 */
   $('kb-review-span').classList.toggle('hidden',kb.review_pending==null);
   if(kb.review_pending!=null){$('kb-review').textContent=num(kb.review_pending)}
+  /* 同名重复页：服务端只在有重复时给这个键。文件名用 textContent 写入，
+     不当作 HTML 解析（文件名由模型生成，不能信任）。每组用「与」连接，组间用分号。 */
+  const dups=Array.isArray(kb.duplicate_pages)?kb.duplicate_pages:[];
+  $('kb-dup-span').classList.toggle('hidden',dups.length===0);
+  if(dups.length){$('kb-dup').textContent=num(dups.length);
+    $('kb-dup-list').textContent=dups.map(g=>g.join(' 与 ')).join('；')}
   $('cleanup-total').textContent=fmtBytes(data.cleanup_total_bytes||0);
   $('disk-free').textContent=(data.disk&&data.disk.free_gb!=null)?data.disk.free_gb+' GiB':'—';
   $('disk-total').textContent=(data.disk&&data.disk.total_gb!=null)?data.disk.total_gb+' GiB':'—';

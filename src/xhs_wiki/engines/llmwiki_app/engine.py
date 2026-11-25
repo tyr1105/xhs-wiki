@@ -34,6 +34,7 @@ from pathlib import Path
 from ..base import DistillResult, IngestResult, Package
 from . import app as app_module
 from . import project
+from . import related
 
 
 class EngineNeedsUser(Exception):
@@ -82,6 +83,9 @@ PER_NOTE_WAIT_S = 3 * 60      # 每条 3 分钟
 MIN_TOTAL_WAIT_S = 10 * 60    # 至少 10 分钟
 MAX_TOTAL_WAIT_S = 60 * 60    # 最多 60 分钟
 DEFAULT_POLL_INTERVAL_S = 5.0  # 轮询间隔
+# 逐条收录时等上一条整理出结果的上限：实测一条约 1–2 分钟，长视频转写稿
+# 会更久，给 10 分钟；超时不报错，直接写下一条。
+PACE_WAIT_S = 10 * 60
 DEFAULT_START_WAIT_S = 60.0    # prepare 启动应用后等进程出现的上限
 DEFAULT_SETTLE_WAIT_S = 10.0   # 进程出现后再等应用加载项目的时间
 
@@ -105,12 +109,17 @@ class LlmWikiAppEngine:
     def __init__(self, kb_root, app_home=None, settings=None, *,
                  app: app_module.AppController | None = None,
                  sleep=None, monotonic=None,
-                 poll_interval: float = DEFAULT_POLL_INTERVAL_S) -> None:
+                 poll_interval: float = DEFAULT_POLL_INTERVAL_S,
+                 pace_wait: float = PACE_WAIT_S) -> None:
         self.kb_root = Path(kb_root).expanduser()
         self.app = app or app_module.AppController()
         self.sleep = sleep or time.sleep
         self.monotonic = monotonic or time.monotonic
         self.poll_interval = poll_interval
+        # ingest 逐条收录时，等上一条整理出结果的上限（秒）。
+        self.pace_wait = pace_wait
+        # 本次运行中被恢复原样的用户个人页面（应用收录时误改了它们）。
+        self.restored_pages: list[str] = []
 
     # ------------------------------------------------------------------
     # health：不花钱的运行前检查
@@ -219,11 +228,19 @@ class LlmWikiAppEngine:
         - 先写同目录点开头的临时文件再 os.replace，应用不会读到半个
           文件（见 project.write_source_atomic）；
         - 文件已存在且内容相同则**不重写**——重写会触发应用重复整理；
+        - **逐条收录**：每写一条之前，先等上一条整理出结果（最多 pace_wait
+          秒），再把和这一条相关的已有页面写到目录开头（related.write_hint），
+          让模型把同主题内容并入已有页面，而不是另建近义新页面；最后一条也等
+          整理出结果再返回；
+        - **保护用户个人页面**：每条写入前存一份页首 origin: personal 的页面
+          原文，这条整理完后，它写到的个人页面恢复原样（_restore_protected）；
         - engine_ref = {"source": "xhs/<note_id>.md", "sha256": 指纹}，
           供 distill / source_exists / 清理环节核对。
         """
 
         results = []
+        # 上一条真正写入（会触发应用整理）的笔记：(编号, 写入前个人页面的原文)；None 表示还没有。
+        pending: tuple[str, dict[str, str]] | None = None
         for pkg in packages:
             content = project.render_source(pkg)
             path = project.source_path(self.kb_root, pkg.note_id)
@@ -233,7 +250,25 @@ class LlmWikiAppEngine:
             except OSError:
                 unchanged = False
             if not unchanged:
+                # 逐条收录（为什么不一次写完整批）：应用每整理一条都会重新读
+                # wiki/index.md，而目录开头的「相关已有页面」是按这一条笔记挑的。
+                # 一次写完，后面的笔记就会用上前一条的候选页面。所以先等上一条
+                # 整理结束（完成或应用放弃），再为这一条更新候选、写来源文件。
+                if pending is not None:
+                    self._settle(*pending)
+                try:
+                    related.write_hint(self.kb_root, pkg.title, pkg.package_md)
+                except (OSError, UnicodeError):
+                    # 候选页面只是帮模型合并的提示：目录读写失败不能拦住收录，
+                    # 这一条照常写入（最多是合并效果差一些）。
+                    pass
+                # 写入前存一份用户个人页面的原文，这条整理完后用来恢复被改动的个人页面。
+                try:
+                    protected = related.protected_pages(self.kb_root)
+                except OSError:
+                    protected = {}
                 project.write_source_atomic(path, content)
+                pending = (pkg.note_id, protected)
             digest = project.sha256_bytes(content.encode("utf-8"))
             results.append(IngestResult(
                 note_id=pkg.note_id,
@@ -242,7 +277,80 @@ class LlmWikiAppEngine:
                 engine_ref={"source": project.source_rel(pkg.note_id),
                             "sha256": digest},
             ))
+        # 最后一条也等它整理完再返回：个人页面的保护要在整理结束后检查。
+        if pending is not None:
+            self._settle(*pending)
         return results
+
+    def _settle(self, note_id: str, protected: dict[str, str]) -> None:
+        """等一条来源整理出结果，再恢复这条写到的个人页面。"""
+        self._wait_note_settled(note_id)
+        self._restore_protected(note_id, protected)
+
+    def _restore_protected(self, note_id: str, protected: dict[str, str]) -> list[str]:
+        """这条来源整理时写到了用户个人页面（页首 origin: personal）的，恢复成写入前的原文。
+
+        只看应用记录的这条来源的 filesWritten：别的时间（例如每晚自省任务）对个人页面的
+        正常更新不在其中，不会被撤销。返回恢复了哪些页面（相对知识库根目录的路径），
+        同时记在 self.restored_pages 里供运行日志使用。"""
+        restored: list[str] = []
+        if not protected:
+            return restored
+        cache = project.read_ingest_cache(self.kb_root) or {}
+        entry = cache.get(project.source_rel(note_id))
+        files = entry.get("filesWritten") if isinstance(entry, dict) else None
+        if not isinstance(files, list):
+            return restored
+        for rel in files:
+            original = protected.get(rel) if isinstance(rel, str) else None
+            if original is None:
+                continue
+            target = self.kb_root / rel
+            try:
+                current = target.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                current = None
+            if current == original:
+                continue
+            try:
+                related.atomic_write_text(target, original)
+            except OSError:
+                continue
+            restored.append(rel)
+        self.restored_pages.extend(restored)
+        return restored
+
+    def _note_state(self, note_id: str) -> str | None:
+        """一条来源当前的整理状态：ok（完成且页面都在）/ failed（应用重试
+        3 次后放弃）/ None（还没结果，或记录文件暂时读不出来）。
+        distill 的逐条判定和 ingest 的逐条等待共用这一套口径。"""
+        cache = project.read_ingest_cache(self.kb_root)
+        queue = project.read_ingest_queue(self.kb_root)
+        if cache is None or queue is None:
+            return None
+        entry = cache.get(project.source_rel(note_id))
+        current = project.file_sha256(project.source_path(self.kb_root, note_id))
+        if entry is not None and project.cache_entry_complete(
+                self.kb_root, entry, current):
+            return "ok"
+        queue_rel = f"{project.SOURCES_DIR_REL.as_posix()}/{note_id}.md"
+        for item in queue:
+            if isinstance(item, dict) and item.get("sourcePath") == queue_rel \
+                    and item.get("status") == "failed" \
+                    and int(item.get("retryCount") or 0) >= 3:
+                return "failed"
+        return None
+
+    def _wait_note_settled(self, note_id: str) -> None:
+        """等一条来源整理出结果（完成或失败），最多 pace_wait 秒。
+
+        到时还没结果也不报错、直接继续写下一条：应用可能只是慢，这一条
+        之后由 distill 接着核对；最坏情况只是下一条用不上专属候选页面。"""
+        deadline = self.monotonic() + self.pace_wait
+        while self.monotonic() < deadline:
+            if self._note_state(note_id) is not None:
+                return
+            self.sleep(self.poll_interval)
 
     # ------------------------------------------------------------------
     # distill：轮询记录文件，逐条判定

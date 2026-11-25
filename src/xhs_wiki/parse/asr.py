@@ -105,20 +105,35 @@ class _WhisperBackend:
     """把 faster-whisper 的惰性分段迭代器转换为普通字典列表。"""
 
     # 与 SenseVoice 一样串行使用一个模型，保证同一进程内缓存可安全复用。
-    def __init__(self, model: object):
+    # cpu_fallback：模型跑在 GPU（MPS）上时，传入一个「造 CPU 模型」的函数。
+    # ctranslate2 的 MPS 后端仍标为实验性，万一某条音频在 GPU 上识别出错，
+    # 就换成 CPU 模型把这条重跑一次，之后这个进程都用 CPU，不反复试 GPU。
+    def __init__(self, model: object, cpu_fallback=None):
         self.model = model
+        self.cpu_fallback = cpu_fallback
         self.lock = Lock()
 
     # 迭代器实际迭代时才做识别，必须在计时和异常处理范围内完整消费。
+    def _run(self, samples: np.ndarray) -> list[dict]:
+        items, _ = self.model.transcribe(
+            samples, language="zh", beam_size=5, vad_filter=False
+        )
+        return [
+            {"start": float(item.start), "end": float(item.end), "text": item.text.strip()}
+            for item in items if item.text.strip()
+        ]
+
     def transcribe(self, samples: np.ndarray) -> list[dict]:
         with self.lock:
-            items, _ = self.model.transcribe(
-                samples, language="zh", beam_size=5, vad_filter=False
-            )
-            return [
-                {"start": float(item.start), "end": float(item.end), "text": item.text.strip()}
-                for item in items if item.text.strip()
-            ]
+            try:
+                return self._run(samples)
+            except Exception:
+                if self.cpu_fallback is None:
+                    raise
+                # GPU 出错：换 CPU 模型重跑这一条；CPU 也失败就照常抛出。
+                self.model = self.cpu_fallback()
+                self.cpu_fallback = None
+                return self._run(samples)
 
 
 # 延迟导入让未启用的候选模型不成为运行时必需依赖，也方便注入替身。
@@ -160,17 +175,50 @@ WHISPER_FILES = (
 )
 
 
-def _create_whisper(models_dir: Path) -> _WhisperBackend:
+# 判断本机能不能用 Apple 芯片的 GPU（MPS，Metal Performance Shaders）跑 Whisper。
+# 实测 large-v3-turbo 在 M 系列芯片上用 GPU 比 CPU int8 快一个数量级，转写文字一致。
+# 环境变量 XHS_WIKI_ASR_DEVICE=cpu 可强制只用 CPU（排查问题时的退路）。
+# 旧版 ctranslate2 没有 get_mps_device_count，或任何异常，都按「不可用」处理。
+def _mps_available() -> bool:
+    if os.environ.get("XHS_WIKI_ASR_DEVICE", "").strip().lower() == "cpu":
+        return False
+    try:
+        import ctranslate2
+
+        return int(ctranslate2.get_mps_device_count()) > 0
+    except Exception:
+        return False
+
+
+# 按设备构造 Whisper 模型并包成后端：能用 GPU 就先试 GPU（float16，MPS 上
+# int8 会被自动换成 float16，直接写 float16 更清楚）；GPU 加载失败就退回
+# CPU int8，保证转写不会因为加速失败而整体不可用。
+def _load_whisper(model_path: str, **extra) -> _WhisperBackend:
     from faster_whisper import WhisperModel
 
+    def make_cpu():
+        return WhisperModel(
+            model_path, device="cpu", compute_type="int8",
+            cpu_threads=NUM_THREADS, local_files_only=True, **extra,
+        )
+
+    if _mps_available():
+        try:
+            gpu = WhisperModel(
+                model_path, device="mps", compute_type="float16",
+                local_files_only=True, **extra,
+            )
+            return _WhisperBackend(gpu, cpu_fallback=make_cpu)
+        except Exception:
+            pass
+    return _WhisperBackend(make_cpu())
+
+
+def _create_whisper(models_dir: Path) -> _WhisperBackend:
     # 路线 1（安装环境）：普通目录，文件按 assets_manifest.json 逐个下载。
     local_dir = models_dir / WHISPER_DIR
     if all((local_dir / name).is_file() for name in WHISPER_FILES):
-        model = WhisperModel(
-            str(local_dir), device="cpu", compute_type="int8",
-            cpu_threads=NUM_THREADS, local_files_only=True,
-        )
-        return _WhisperBackend(model)
+        return _load_whisper(str(local_dir))
 
     # 路线 2（开发环境）：HF 的缓存目录结构（snapshots/<revision>/…）。
     # 模型仓库换过组织名，缓存目录名同时认新旧两个组织名——
@@ -202,12 +250,7 @@ def _create_whisper(models_dir: Path) -> _WhisperBackend:
         "model.bin", "config.json", "tokenizer.json", "vocabulary.json"
     )):
         raise ValueError("asr_model_files_missing")
-    model = WhisperModel(
-        str(snapshot), device="cpu", compute_type="int8",
-        cpu_threads=NUM_THREADS, download_root=str(download_root),
-        local_files_only=True,
-    )
-    return _WhisperBackend(model)
+    return _load_whisper(str(snapshot), download_root=str(download_root))
 
 
 # 单一工厂是测试替换真实模型的边界；公开入口先验证模型名称。

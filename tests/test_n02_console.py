@@ -361,6 +361,22 @@ class TestStatusExtras(N02RouteTestBase):
         data = json.loads(body)
         self.assertNotIn("review_pending", data["kb"])
 
+    def test_status_lists_duplicate_name_pages(self):
+        self.make_fake_engine()
+        queries = self.kb / "wiki" / "queries"
+        queries.mkdir(parents=True, exist_ok=True)
+        (queries / "示例问题.md").write_text("# a\n", encoding="utf-8")
+        (queries / "示例问题？.md").write_text("# b\n", encoding="utf-8")
+        _, body = self.request("GET", "/api/status")
+        data = json.loads(body)
+        self.assertEqual(data["kb"]["duplicate_pages"],
+                         [["wiki/queries/示例问题.md", "wiki/queries/示例问题？.md"]])
+
+    def test_status_without_duplicates_hides_the_field(self):
+        self.make_fake_engine()
+        _, body = self.request("GET", "/api/status")
+        self.assertNotIn("duplicate_pages", json.loads(body)["kb"])
+
 
 # ---------------------------------------------------------------------------
 # 大白话对照表：新引擎的全部原因代码都有中文

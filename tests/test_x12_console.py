@@ -123,6 +123,10 @@ def test_daily_page_llmwiki_extras(page):
     assert "LLM Wiki 待审核" in page
     assert "在 LLM Wiki 的审核页处理，不影响整理" in page
     assert "kb.review_pending==null" in page
+    # 同名重复页：有才显示，文件名用 textContent 写入。
+    assert 'id="kb-dup-span"' in page
+    assert "kb.duplicate_pages" in page
+    assert "$('kb-dup-list').textContent=" in page
     assert 'id="e-llmwiki-perm"' in page
     assert "明文保存在设置文件里" in page
     assert "post('/api/setup/llmwiki-tighten',{})" in page

@@ -605,3 +605,222 @@ def test_fixtures_shapes_still_parse(tmp_path):
     (kb / project.QUEUE_REL).write_text(queue_text, encoding="utf-8")
     assert isinstance(project.read_ingest_cache(kb), dict)
     assert isinstance(project.read_ingest_queue(kb), list)
+
+
+# ---------------------------------------------------------------------------
+# related：收录前把相关已有页面写到目录开头；ingest 逐条收录
+# ---------------------------------------------------------------------------
+
+from xhs_wiki.engines.llmwiki_app import related  # noqa: E402
+
+
+def write_page(kb: Path, rel: str, title: str, body: str = "", front_extra: str = ""):
+    """造一个虚构主题页（头部 type/title + 正文）。"""
+    path = kb / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"---\ntype: concept\ntitle: \"{title}\"\n{front_extra}---\n\n# {title}\n\n{body}\n",
+                    encoding="utf-8")
+
+
+class TestRelated:
+    def test_rank_prefers_page_sharing_title_terms(self, tmp_path):
+        kb = tmp_path / "kb"
+        write_page(kb, "wiki/concepts/fake-memory-layers.md", "虚构记忆分层方法", "讲记忆分层。")
+        write_page(kb, "wiki/concepts/fake-cooking.md", "虚构家常菜做法", "讲炒菜火候。")
+        write_page(kb, "wiki/entities/fake-tool.md", "虚构工具甲", "一个工具。")
+        pages = related.load_catalog(kb)
+        top = related.rank(pages, related.note_text("记忆分层的新说法", "正文讲记忆分层。"))
+        assert top[0]["target"] == "concepts/fake-memory-layers"
+        # 完全没有共同词的页面不出现。
+        assert all(p["target"] != "concepts/fake-cooking" for p in top)
+
+    def test_personal_pages_are_never_candidates(self, tmp_path):
+        kb = tmp_path / "kb"
+        write_page(kb, "wiki/concepts/fake-own-notes.md", "虚构记忆分层记录", "记忆分层。",
+                   front_extra="origin: personal\n")
+        pages = related.load_catalog(kb)
+        assert pages == []
+
+    def test_replace_block_inserts_after_heading_then_replaces(self):
+        index = "---\ntype: index\n---\n\n# 目录\n\n## 概念\n- [[concepts/a]] — 甲\n"
+        first = related.replace_block(index, related.render_block([]))
+        # 标记块在一级标题之后、原有小节之前，原有内容原样保留。
+        assert first.index("# 目录") < first.index(related.RELATED_START) < first.index("## 概念")
+        assert "- [[concepts/a]] — 甲" in first
+        page = {"target": "concepts/a", "title": "甲"}
+        second = related.replace_block(first, related.render_block([page]))
+        # 第二次是替换，不会出现两个标记块。
+        assert second.count(related.RELATED_START) == 1
+        assert "（本次未找到" not in second
+        start = second.index(related.RELATED_START)
+        assert "- [[concepts/a]] — 甲" in second[start:second.index(related.RELATED_END)]
+
+    def test_write_hint_without_index_does_nothing(self, tmp_path):
+        kb = tmp_path / "kb"
+        write_page(kb, "wiki/concepts/fake.md", "虚构页面")
+        assert related.write_hint(kb, "标题", "正文") == 0
+        assert not (kb / project.WIKI_INDEX).exists()
+
+    def test_write_hint_keeps_rest_of_index(self, tmp_path):
+        kb = tmp_path / "kb"
+        write_page(kb, "wiki/concepts/fake-memory.md", "虚构记忆分层")
+        index = kb / project.WIKI_INDEX
+        index.write_text("# 目录\n\n## Recently Updated\n- [[x]] — 乙\n", encoding="utf-8")
+        assert related.write_hint(kb, "记忆分层", "正文") == 1
+        text = index.read_text(encoding="utf-8")
+        assert "[[concepts/fake-memory]]" in text
+        assert text.endswith("## Recently Updated\n- [[x]] — 乙\n")
+
+
+class TestPacedIngest:
+    def test_second_note_waits_for_first_and_gets_its_own_hint(self, tmp_path, monkeypatch):
+        engine, _, kb = make_engine(tmp_path)
+        make_project(kb)
+        p1 = make_pkg(note_id="xhs-test-201", title="第一条")
+        p2 = make_pkg(note_id="xhs-test-202", title="第二条")
+        events = []
+
+        def fake_hint(root, title, package_md, limit=related.DEFAULT_LIMIT):
+            first_done = project.read_ingest_cache(kb).get(project.source_rel(p1.note_id))
+            events.append((title, first_done is not None))
+            return 0
+
+        monkeypatch.setattr(related, "write_hint", fake_hint)
+        sleeps = []
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            if len(sleeps) == 3:
+                # 模拟应用在等待第 3 次轮询时整理完第一条。
+                touch(kb, "wiki/sources/first.md")
+                write_cache(kb, cache_entry_for(kb, p1.note_id, ["wiki/sources/first.md"]))
+            if len(sleeps) == 4:
+                # 第二条写入后的第 1 次轮询时整理完第二条。
+                touch(kb, "wiki/sources/second.md")
+                cache = project.read_ingest_cache(kb)
+                cache.update(cache_entry_for(kb, p2.note_id, ["wiki/sources/second.md"]))
+                write_cache(kb, cache)
+            engine.monotonic.advance(1.0)
+
+        engine.sleep = sleep
+        engine.ingest([p1, p2])
+        # 第一条不等；第二条在第一条完成之后才更新候选页面并写入；最后一条也等到整理完。
+        assert events == [("第一条", False), ("第二条", True)]
+        assert len(sleeps) == 4
+        assert project.source_path(kb, p2.note_id).exists()
+
+    def test_pace_timeout_still_writes_next_note(self, tmp_path):
+        engine, _, kb = make_engine(tmp_path)
+        make_project(kb)
+        engine.pace_wait = 30.0
+        p1 = make_pkg(note_id="xhs-test-301")
+        p2 = make_pkg(note_id="xhs-test-302")
+        results = engine.ingest([p1, p2])
+        # 第一条一直没结果：等满 30 秒后照常写第二条，两条都返回 ok。
+        assert [r.status for r in results] == ["ok", "ok"]
+        assert project.source_path(kb, p2.note_id).exists()
+        assert engine.monotonic() >= 30.0
+
+    def test_failed_previous_note_stops_waiting(self, tmp_path):
+        engine, _, kb = make_engine(tmp_path)
+        make_project(kb)
+        p1 = make_pkg(note_id="xhs-test-401")
+        p2 = make_pkg(note_id="xhs-test-402")
+        write_queue(kb, [{"sourcePath": f"raw/sources/xhs/{n}.md",
+                          "status": "failed", "retryCount": 3, "error": "x"}
+                         for n in ("xhs-test-401", "xhs-test-402")])
+        engine.ingest([p1, p2])
+        # 两条都已被应用放弃：不必等，时钟没有前进。
+        assert engine.monotonic() == 0.0
+
+    def test_unchanged_note_neither_waits_nor_rewrites_hint(self, tmp_path, monkeypatch):
+        engine, _, kb = make_engine(tmp_path)
+        make_project(kb)
+        p1 = make_pkg(note_id="xhs-test-501")
+        engine.ingest([p1])
+        waited = engine.monotonic()  # 第一次写入后会等它整理（这里一直没结果，等满上限）
+        calls = []
+        monkeypatch.setattr(related, "write_hint", lambda *a, **k: calls.append(a) or 0)
+        engine.ingest([p1, p1])
+        assert calls == [] and engine.monotonic() == waited
+
+
+class TestProtectPersonalPages:
+    """应用收录时写到用户个人页面（origin: personal），整理完要恢复原样。"""
+
+    PERSONAL = "---\ntype: entity\ntitle: 我的项目\norigin: personal\n---\n\n# 我的项目\n\n原文。\n"
+
+    def _setup(self, tmp_path):
+        engine, _, kb = make_engine(tmp_path)
+        make_project(kb)
+        (kb / "wiki/entities").mkdir(parents=True, exist_ok=True)
+        (kb / "wiki/entities/mine.md").write_text(self.PERSONAL, encoding="utf-8")
+        (kb / "wiki/entities/other.md").write_text("---\ntype: entity\ntitle: 别人\n---\n\n旧\n", encoding="utf-8")
+        return engine, kb
+
+    def _app_writes(self, engine, kb, pkg, files, edits):
+        """假应用：第一次轮询时按 edits 改文件，并登记这条来源的 filesWritten。"""
+        def sleep(seconds):
+            for rel, text in edits.items():
+                (kb / rel).write_text(text, encoding="utf-8")
+            write_cache(kb, cache_entry_for(kb, pkg.note_id, files))
+            engine.monotonic.advance(1.0)
+        engine.sleep = sleep
+
+    def test_personal_page_written_by_ingest_is_restored(self, tmp_path):
+        engine, kb = self._setup(tmp_path)
+        pkg = make_pkg(note_id="xhs-test-601")
+        self._app_writes(engine, kb, pkg,
+                         ["wiki/entities/mine.md", "wiki/entities/other.md"],
+                         {"wiki/entities/mine.md": "被合并改写", "wiki/entities/other.md": "合并后的新内容"})
+        engine.ingest([pkg])
+        assert (kb / "wiki/entities/mine.md").read_text(encoding="utf-8") == self.PERSONAL
+        # 普通页面的合并结果保留
+        assert (kb / "wiki/entities/other.md").read_text(encoding="utf-8") == "合并后的新内容"
+        assert engine.restored_pages == ["wiki/entities/mine.md"]
+
+    def test_personal_page_not_in_files_written_is_left_alone(self, tmp_path):
+        engine, kb = self._setup(tmp_path)
+        pkg = make_pkg(note_id="xhs-test-602")
+        # 同一时间别的流程（例如每晚自省）正常更新了个人页面，但不在这条来源的 filesWritten 里
+        self._app_writes(engine, kb, pkg, ["wiki/entities/other.md"],
+                         {"wiki/entities/mine.md": "自省任务的正常更新"})
+        engine.ingest([pkg])
+        assert (kb / "wiki/entities/mine.md").read_text(encoding="utf-8") == "自省任务的正常更新"
+        assert engine.restored_pages == []
+
+    def test_protected_pages_lists_only_personal(self, tmp_path):
+        _, kb = self._setup(tmp_path)
+        assert list(related.protected_pages(kb)) == ["wiki/entities/mine.md"]
+
+
+class TestDuplicateNames:
+    """同名重复页检查：只差标点、空白或大小写的主题页归为一组，只看文件名。"""
+
+    @staticmethod
+    def _touch(kb, rel):
+        path = kb / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# 虚构页面\n", encoding="utf-8")
+
+    def test_name_key_ignores_punctuation_width_and_case(self):
+        assert related.name_key("示例问题？") == related.name_key("示例问题")
+        assert related.name_key("Demo-Tool") == related.name_key("demo tool")
+        assert related.name_key("示例问题") != related.name_key("示例问答")
+
+    def test_groups_fullwidth_question_mark_and_cross_directory(self, tmp_path):
+        kb = tmp_path / "kb"
+        self._touch(kb, "wiki/queries/示例问题.md")
+        self._touch(kb, "wiki/queries/示例问题？.md")
+        self._touch(kb, "wiki/concepts/demo-tool.md")
+        self._touch(kb, "wiki/entities/Demo Tool.md")
+        self._touch(kb, "wiki/concepts/不相干.md")
+        # 来源摘要目录不在检查范围内
+        self._touch(kb, "wiki/sources/示例问题.md")
+        assert related.duplicate_name_groups(kb) == [
+            ["wiki/concepts/demo-tool.md", "wiki/entities/Demo Tool.md"],
+            ["wiki/queries/示例问题.md", "wiki/queries/示例问题？.md"],
+        ]
+
+    def test_no_wiki_dir_means_no_duplicates(self, tmp_path):
+        assert related.duplicate_name_groups(tmp_path) == []

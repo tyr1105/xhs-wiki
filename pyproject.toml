@@ -25,6 +25,9 @@ dependencies = [
     "numpy==2.5.4",
     # 默认语音模型 Whisper 的推理库。默认就用 Whisper 转写，所以必须是主依赖。
     "faster-whisper==1.2.1",
+    # ctranslate2 是 faster-whisper 的推理引擎。4.9.0 起提供 Apple 芯片 GPU（MPS）后端，
+    # 语音转写比 CPU 快一个数量级；Intel Mac 没有 MPS，会自动退回 CPU，同样有预编译包。
+    "ctranslate2==4.9.0",
     # PyAV：自带 FFmpeg 解码库的 Python 包，用来从视频里提取音频、检查视频能否读取，
     # 所以用户不需要另装 ffmpeg。只给版本范围、不锁死：安装脚本用 --only-binary 让
     # 安装器按 macOS 版本选预编译包（macOS 13 的 Apple 芯片会选到 15.x，其他选新版）。
